@@ -1,0 +1,26 @@
+{
+  "name": "lavsit-textile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lavsit Textile - система управления текстильными материалами",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "next": "^14.2.30"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.5.4",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.30"
+  }
+}
+
