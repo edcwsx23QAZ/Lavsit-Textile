@@ -1,0 +1,119 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Supplier {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  websiteUrl    String
+  parsingMethod String // "html" | "excel" | "email"
+  parsingUrl    String
+  emailConfig   String? // JSON string with email settings
+  fabricsCount  Int       @default(0)
+  lastUpdatedAt DateTime?
+  status        String    @default("active") // "active" | "error"
+  errorMessage  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  fabrics          Fabric[]
+  parsingRules     ParsingRule?
+  dataStructure    DataStructure?
+  emailAttachments EmailAttachment[]
+  manualUploads    ManualUpload[]
+}
+
+model Fabric {
+  id              String    @id @default(cuid())
+  supplierId      String
+  supplier        Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  collection      String
+  colorNumber     String
+  inStock         Boolean?
+  meterage        Float?
+  price           Float?
+  pricePerMeter   Float? // Цена за метр погонный
+  category        Int? // Категория ткани (1-16)
+  imageUrl        String? // URL изображения ткани
+  colorHex        String? // HEX код доминирующего цвета для палитры
+  lastUpdatedAt   DateTime  @default(now())
+  nextArrivalDate DateTime?
+  comment         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([supplierId])
+  @@index([collection])
+  @@index([lastUpdatedAt])
+  @@index([category])
+}
+
+model ParsingRule {
+  id         String   @id @default(cuid())
+  supplierId String   @unique
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  rules      String // JSON string with parsing rules
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model DataStructure {
+  id            String   @id @default(cuid())
+  supplierId    String   @unique
+  supplier      Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  structure     String // JSON string with data structure snapshot
+  lastCheckedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model EmailAttachment {
+  id             String    @id @default(cuid())
+  supplierId     String
+  supplier       Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  messageId      String // Email message ID
+  subject        String?
+  fromEmail      String?
+  attachmentName String
+  filePath       String // Path to saved file
+  processed      Boolean   @default(false)
+  processedAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([supplierId])
+  @@index([messageId])
+  @@index([processed])
+}
+
+model FabricCategory {
+  id        String   @id @default(cuid())
+  category  Int      @unique // Номер категории (1-16)
+  price     Float    @unique // Цена категории
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ManualUpload {
+  id               String    @id @default(cuid())
+  supplierId       String
+  supplier         Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  type             String // "stock" | "price"
+  filePath         String
+  uploadedAt       DateTime  @default(now())
+  processedAt      DateTime?
+  isActive         Boolean   @default(true) // Активна ли ручная загрузка
+  lastParserUpdate DateTime? // Дата последнего обновления через парсер
+  metadata         String? // JSON с дополнительными данными
+
+  @@index([supplierId])
+  @@index([type])
+  @@index([isActive])
+}

@@ -43,3 +43,15 @@ next-env.d.ts
 # OS
 Thumbs.db
 
+# Database
+prisma/dev.db
+prisma/dev.db-journal
+*.db
+*.db-journal
+
+# Parsing rules (saved per supplier)
+parsing-rules/
+
+# Parsed data files
+data/parsed
+data/email-attachments/
