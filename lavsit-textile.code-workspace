@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "../lavsit-russia-delivery-1763017917119"
+		}
+	],
+	"settings": {
+		"remote.portsAttributes": {
+			"4000": {
+				"label": "Next.js Dev Server",
+				"onAutoForward": "notify",
+				"protocol": "http"
+			}
+		},
+		"remote.autoForwardPorts": false,
+		"remote.autoForwardPortsSource": "hybrid",
+		"simpleBrowser.focusLockIndicator.enabled": true,
+		"workbench.editor.enablePreview": true
+	}
+}

@@ -128,11 +128,17 @@ async function handleStockUpload(
     // Парсим ткани
     const fabrics = await parser.parse(filePath)
 
+    // Импортируем утилиту нормализации цен
+    const { normalizePrice } = await import('@/lib/price-normalization')
+
     // Обновляем базу данных
     let processed = 0
     for (const fabric of fabrics) {
+      // Нормализуем цену к единому формату (рубли)
+      const normalizedPrice = fabric.price !== null ? normalizePrice(fabric.price) : null
+      
       // Вычисляем цену за мп и категорию
-      const pricePerMeter = calculatePricePerMeter(fabric.price, fabric.meterage)
+      const pricePerMeter = calculatePricePerMeter(normalizedPrice, fabric.meterage)
       const category = getCategoryByPrice(pricePerMeter, categories)
 
       // Используем findFirst + create/update вместо upsert с unique constraint
@@ -144,16 +150,20 @@ async function handleStockUpload(
         },
       })
 
+      // Валидируем дату перед сохранением
+      const { validateDate } = await import('@/lib/date-validation')
+      const validNextArrivalDate = validateDate(fabric.nextArrivalDate)
+
       if (existing) {
         await prisma.fabric.update({
           where: { id: existing.id },
           data: {
             inStock: fabric.inStock,
             meterage: fabric.meterage,
-            price: fabric.price,
+            price: normalizedPrice,
             pricePerMeter,
             category,
-            nextArrivalDate: fabric.nextArrivalDate,
+            nextArrivalDate: validNextArrivalDate,
             comment: fabric.comment,
             lastUpdatedAt: new Date(),
           },
@@ -166,37 +176,14 @@ async function handleStockUpload(
             colorNumber: fabric.colorNumber,
             inStock: fabric.inStock,
             meterage: fabric.meterage,
-            price: fabric.price,
+            price: normalizedPrice,
             pricePerMeter,
             category,
-            nextArrivalDate: fabric.nextArrivalDate,
+            nextArrivalDate: validNextArrivalDate,
             comment: fabric.comment,
           },
         })
       }
-        create: {
-          supplierId,
-          collection: fabric.collection,
-          colorNumber: fabric.colorNumber,
-          inStock: fabric.inStock,
-          meterage: fabric.meterage,
-          price: fabric.price,
-          pricePerMeter,
-          category,
-          nextArrivalDate: fabric.nextArrivalDate,
-          comment: fabric.comment,
-        },
-        update: {
-          inStock: fabric.inStock,
-          meterage: fabric.meterage,
-          price: fabric.price,
-          pricePerMeter,
-          category,
-          nextArrivalDate: fabric.nextArrivalDate,
-          comment: fabric.comment,
-          lastUpdatedAt: new Date(),
-        },
-      })
       processed++
     }
 
@@ -262,11 +249,18 @@ async function handlePriceUpload(
     const buffer = fs.readFileSync(filePath)
     const workbook = XLSX.read(buffer, { type: 'buffer' })
     const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+    // Используем raw: true для получения исходных значений (не форматированных)
+    // Это важно для правильного чтения цен с пробелами и запятыми
     const jsonData = XLSX.utils.sheet_to_json(worksheet, {
       header: 1,
       defval: '',
-      raw: false,
+      raw: true, // Получаем исходные значения, не форматированные
     }) as any[][]
+
+    // Специальная обработка для NoFrames
+    if (supplierName === 'NoFrames') {
+      return await handleNoFramesPriceUpload(supplierId, jsonData, categories, manualUpload.id)
+    }
 
     // Пытаемся найти колонки с коллекцией, цветом и ценой
     // Анализируем первые строки для определения структуры
@@ -301,6 +295,9 @@ async function handlePriceUpload(
     let updated = 0
     const startRow = collectionCol === 0 && colorCol === 1 && priceCol === 2 ? 0 : 1
 
+    // Импортируем утилиту нормализации цен
+    const { normalizePrice } = await import('@/lib/price-normalization')
+
     // Обновляем цены
     for (let i = startRow; i < jsonData.length; i++) {
       const row = jsonData[i] || []
@@ -310,11 +307,9 @@ async function handlePriceUpload(
 
       if (!collection || !colorNumber) continue
 
-      // Парсим цену
-      const priceMatch = priceStr.match(/(\d+[\.,]?\d*)/)
-      if (!priceMatch) continue
-
-      const price = parseFloat(priceMatch[1].replace(',', '.'))
+      // Нормализуем цену
+      const price = normalizePrice(priceStr)
+      if (!price) continue
 
       // Находим ткань по коллекции и цвету
       const fabric = await prisma.fabric.findFirst({
@@ -360,5 +355,138 @@ async function handlePriceUpload(
     console.error('[manual-upload] Price upload error:', error)
     throw error
   }
+}
+
+/**
+ * Специальная обработка прайса для NoFrames
+ * Правила:
+ * - Название коллекции в столбце B (индекс 1)
+ * - Цена в столбце E (индекс 4)
+ * - Тип ткани в столбце G (индекс 6)
+ * - Страна в столбце F (индекс 5)
+ * - Состав в столбце H (индекс 7)
+ * - Тест Мартиндейла в столбце I (индекс 8)
+ * - У всех тканей в рамках одной коллекции одна цена
+ */
+async function handleNoFramesPriceUpload(
+  supplierId: string,
+  jsonData: any[][],
+  categories: Array<{ category: number; price: number }>,
+  manualUploadId: string
+) {
+  const { normalizePrice } = await import('@/lib/price-normalization')
+  const { calculatePricePerMeter, getCategoryByPrice } = await import('@/lib/fabric-categories')
+
+  // Маппинг: коллекция -> { цена, тип ткани, описание }
+  const collectionData = new Map<string, {
+    price: number
+    fabricType: string | null
+    description: string | null
+  }>()
+
+  // Собираем данные по коллекциям
+  for (let i = 0; i < jsonData.length; i++) {
+    const row = jsonData[i] || []
+    
+    // Столбец B (индекс 1) - коллекция
+    const collection = String(row[1] || '').trim()
+    if (!collection) continue
+
+    // Столбец E (индекс 4) - цена
+    const rawPrice = row[4]
+    const priceValue = normalizePrice(rawPrice)
+    
+    // Логирование для отладки
+    if (collection && rawPrice) {
+      console.log(`[NoFrames Price] Коллекция "${collection}": исходная цена = "${rawPrice}", нормализованная = ${priceValue}`)
+    }
+    
+    if (!priceValue) continue
+
+    // Столбец G (индекс 6) - тип ткани
+    const fabricType = String(row[6] || '').trim() || null
+
+    // Столбец F (индекс 5) - страна
+    const country = String(row[5] || '').trim()
+    
+    // Столбец H (индекс 7) - состав
+    const composition = String(row[7] || '').trim()
+    
+    // Столбец I (индекс 8) - тест Мартиндейла
+    const martindale = String(row[8] || '').trim()
+
+    // Формируем описание
+    const descriptionParts: string[] = []
+    if (country) {
+      descriptionParts.push(`Страна: ${country}`)
+    }
+    if (composition) {
+      descriptionParts.push(`Состав: ${composition}`)
+    }
+    if (martindale) {
+      descriptionParts.push(`тест Мартиндейла: ${martindale}`)
+    }
+    const description = descriptionParts.length > 0 ? descriptionParts.join(', ') : null
+
+    // Сохраняем данные коллекции (если цена уже есть, не перезаписываем)
+    if (!collectionData.has(collection)) {
+      collectionData.set(collection, {
+        price: priceValue,
+        fabricType,
+        description,
+      })
+    }
+  }
+
+  console.log(`[NoFrames Price] Найдено коллекций с ценами: ${collectionData.size}`)
+
+  // Обновляем все ткани по коллекциям
+  let updated = 0
+  for (const [collection, data] of collectionData.entries()) {
+    // Находим все ткани этой коллекции (без учета регистра)
+    // Получаем все ткани поставщика и фильтруем в памяти для точного совпадения без учета регистра
+    const allFabrics = await prisma.fabric.findMany({
+      where: { supplierId },
+    })
+    
+    const fabrics = allFabrics.filter(f => 
+      f.collection.trim().toLowerCase() === collection.trim().toLowerCase()
+    )
+
+    console.log(`[NoFrames Price] Коллекция "${collection}": найдено ${fabrics.length} тканей, цена: ${data.price}`)
+
+    for (const fabric of fabrics) {
+      // Вычисляем цену за мп и категорию
+      const pricePerMeter = calculatePricePerMeter(data.price, fabric.meterage)
+      const category = getCategoryByPrice(pricePerMeter, categories)
+
+      await prisma.fabric.update({
+        where: { id: fabric.id },
+        data: {
+          price: data.price,
+          pricePerMeter,
+          category,
+          fabricType: data.fabricType,
+          description: data.description,
+          lastUpdatedAt: new Date(),
+        },
+      })
+      updated++
+    }
+  }
+
+  // Обновляем запись о загрузке
+  await prisma.manualUpload.update({
+    where: { id: manualUploadId },
+    data: {
+      processedAt: new Date(),
+    },
+  })
+
+  return NextResponse.json({
+    success: true,
+    updated,
+    message: `Обновлено цен для ${collectionData.size} коллекций, всего тканей: ${updated}`,
+  })
 }
 

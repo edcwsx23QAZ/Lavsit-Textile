@@ -47,6 +47,48 @@ async function main() {
       parsingMethod: 'email',
       parsingUrl: '', // Для email типа URL не используется
     },
+    {
+      name: 'Tex.Group',
+      websiteUrl: 'https://tex.group',
+      parsingMethod: 'excel',
+      parsingUrl: 'https://tex.group/ostatki/OstatkiMSK.xls',
+    },
+    {
+      name: 'Vektor',
+      websiteUrl: 'https://vektor.club',
+      parsingMethod: 'excel',
+      parsingUrl: 'https://api.vektor.club/static/remainders_files/{DDMMYY}_MSK.xlsx', // Динамический URL, парсер сам найдет актуальную дату
+    },
+    {
+      name: 'Аметист',
+      websiteUrl: 'https://ametist.ru',
+      parsingMethod: 'email',
+      parsingUrl: '', // Для email типа URL не используется
+    },
+    {
+      name: 'TextileNova',
+      websiteUrl: 'https://textilnova.ru',
+      parsingMethod: 'html',
+      parsingUrl: 'https://textilnova.ru//',
+    },
+    {
+      name: 'Viptextil',
+      websiteUrl: 'http://tgn1.viptextil.ru',
+      parsingMethod: 'html',
+      parsingUrl: 'http://tgn1.viptextil.ru/vip/ostatki.html',
+    },
+    {
+      name: 'Artefact',
+      websiteUrl: 'https://artefakt-msk.com',
+      parsingMethod: 'excel',
+      parsingUrl: 'https://artefakt-msk.com/%D0%BD%D0%B0%D0%BB%D0%B8%D1%87%D0%B8%D0%B5',
+    },
+    {
+      name: 'Эгида',
+      websiteUrl: 'https://exch.tendence.ru',
+      parsingMethod: 'excel',
+      parsingUrl: 'https://exch.tendence.ru/download.php?file={DD.MM.YY}_ostatki_tkani_ooo_egida.xls', // Динамический URL, парсер сам найдет актуальную дату
+    },
   ]
 
   for (const supplier of suppliers) {

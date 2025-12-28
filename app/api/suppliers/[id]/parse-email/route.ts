@@ -6,6 +6,7 @@ import { saveParsedDataToExcel } from '@/lib/parsers/save-parsed-data'
 import { ParsedMail } from 'mailparser'
 import * as fs from 'fs'
 import * as path from 'path'
+import AdmZip from 'adm-zip'
 
 export async function POST(
   request: Request,
@@ -133,8 +134,49 @@ export async function POST(
             )
 
             // Проверяем валидность файла
-            const parser = new EmailExcelParser(supplier.id, supplier.name)
-            const isValid = await parser.validateFile(tempFilePath)
+            // Для Аметиста используем AmetistParser, для остальных - EmailExcelParser
+            let parser: any
+            let isValid = false
+            
+            if (supplier.name === 'Аметист') {
+              const { AmetistParser } = await import('@/lib/parsers/ametist-parser')
+              parser = new AmetistParser(supplier.id, supplier.name)
+              
+              // Для ZIP файлов проверяем, что архив можно распаковать и содержит Excel
+              if (tempFilePath.endsWith('.zip')) {
+                try {
+                  const zip = new AdmZip(tempFilePath)
+                  const zipEntries = zip.getEntries()
+                  const hasExcel = zipEntries.some(entry => 
+                    entry.entryName.endsWith('.xlsx') || entry.entryName.endsWith('.xls')
+                  )
+                  if (hasExcel) {
+                    // Пробуем распаковать и проверить Excel файл
+                    const extractPath = path.join(path.dirname(tempFilePath), 'extracted')
+                    if (!fs.existsSync(extractPath)) {
+                      fs.mkdirSync(extractPath, { recursive: true })
+                    }
+                    zip.extractAllTo(extractPath, true)
+                    const files = fs.readdirSync(extractPath)
+                    const excelFile = files.find(f => f.endsWith('.xlsx') || f.endsWith('.xls'))
+                    if (excelFile) {
+                      const excelPath = path.join(extractPath, excelFile)
+                      isValid = await parser.validateFile(excelPath)
+                      // Удаляем временные файлы
+                      fs.rmSync(extractPath, { recursive: true, force: true })
+                    }
+                  }
+                } catch (zipError: any) {
+                  console.log(`[parse-email] Error processing ZIP: ${zipError.message}`)
+                  isValid = false
+                }
+              } else {
+                isValid = await parser.validateFile(tempFilePath)
+              }
+            } else {
+              parser = new EmailExcelParser(supplier.id, supplier.name)
+              isValid = await parser.validateFile(tempFilePath)
+            }
 
             if (isValid) {
               const emailDate = email.date || new Date(0)
@@ -291,7 +333,14 @@ export async function POST(
           }
 
           // Parse the Excel file
-          const parser = new EmailExcelParser(supplier.id, supplier.name)
+          // Для Аметиста используем AmetistParser, для остальных - EmailExcelParser
+          let parser: any
+          if (supplier.name === 'Аметист') {
+            const { AmetistParser } = await import('@/lib/parsers/ametist-parser')
+            parser = new AmetistParser(supplier.id, supplier.name)
+          } else {
+            parser = new EmailExcelParser(supplier.id, supplier.name)
+          }
 
           // Check if rules exist, if not, analyze and create them
           let rules = await parser.loadRules()
@@ -324,6 +373,7 @@ export async function POST(
           }
 
           // Update database
+          const { validateDate } = await import('@/lib/date-validation')
           await prisma.$transaction([
             prisma.fabric.deleteMany({
               where: { supplierId: supplier.id },
@@ -333,6 +383,7 @@ export async function POST(
                 data: {
                   ...fabric,
                   supplierId: supplier.id,
+                  nextArrivalDate: validateDate(fabric.nextArrivalDate),
                   lastUpdatedAt: new Date(),
                 },
               })

@@ -23,12 +23,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatDate } from '@/lib/utils'
-import { RefreshCw, AlertCircle, Download, Upload, FileText } from 'lucide-react'
+import { RefreshCw, AlertCircle, Download, Upload, FileText, Ban } from 'lucide-react'
 import { toast } from 'sonner'
 import { ParsingRulesDialog } from '@/components/ParsingRulesDialog'
 import { EmailSettingsDialog } from '@/components/EmailSettingsDialog'
 import { ManualUploadDialog } from '@/components/ManualUploadDialog'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface Supplier {
   id: string
@@ -44,6 +45,7 @@ interface Supplier {
 }
 
 export default function SuppliersPage() {
+  const router = useRouter()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [parsingSupplier, setParsingSupplier] = useState<string | null>(null)
@@ -64,7 +66,9 @@ export default function SuppliersPage() {
       const response = await fetch('/api/suppliers')
       if (!response.ok) throw new Error('Failed to fetch suppliers')
       const data = await response.json()
-      setSuppliers(data)
+      // Сортируем поставщиков по алфавиту
+      const sorted = [...data].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+      setSuppliers(sorted)
     } catch (error: any) {
       toast.error('Ошибка загрузки: ' + error.message)
     } finally {
@@ -117,15 +121,72 @@ export default function SuppliersPage() {
   const handleParse = async (supplierId: string) => {
     try {
       setParsingSupplier(supplierId)
-      const response = await fetch(`/api/suppliers/${supplierId}/parse`, {
-        method: 'POST',
-      })
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to parse')
+      
+      // Находим поставщика для проверки метода парсинга
+      const supplier = suppliers.find(s => s.id === supplierId)
+      
+      // Для email-поставщиков используем parse-email endpoint
+      if (supplier?.parsingMethod === 'email') {
+        const response = await fetch(`/api/suppliers/${supplierId}/parse-email`, {
+          method: 'POST',
+        })
+        
+        // Check content type before parsing
+        const contentType = response.headers.get('content-type')
+        const isJson = contentType && contentType.includes('application/json')
+        
+        if (!response.ok) {
+          let errorMessage = 'Failed to check email'
+          if (isJson) {
+            try {
+              const error = await response.json()
+              errorMessage = error.error || errorMessage
+            } catch (e) {
+              const text = await response.text()
+              errorMessage = text || errorMessage
+            }
+          } else {
+            const text = await response.text()
+            const match = text.match(/<title[^>]*>([^<]+)<\/title>/i) || 
+                         text.match(/<h1[^>]*>([^<]+)<\/h1>/i) ||
+                         text.match(/error[^>]*>([^<]+)/i)
+            errorMessage = match ? match[1] : response.statusText || errorMessage
+          }
+          throw new Error(errorMessage)
+        }
+        
+        if (!isJson) {
+          const text = await response.text()
+          throw new Error(`Server returned non-JSON response: ${text.substring(0, 100)}`)
+        }
+        
+        const data = await response.json()
+        if (data.emailsChecked === 0 && data.message) {
+          toast.warning(
+            `${data.message} Проверено писем: ${data.emailsChecked}`
+          )
+        } else {
+          toast.success(
+            `Проверено писем: ${data.emailsChecked}, обработано вложений: ${data.attachmentsProcessed}, найдено тканей: ${data.fabricsCount}`
+          )
+        }
+      } else {
+        // Для остальных поставщиков используем обычный parse endpoint
+        const response = await fetch(`/api/suppliers/${supplierId}/parse`, {
+          method: 'POST',
+        })
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || 'Failed to parse')
+        }
+        const data = await response.json()
+        if (data.message) {
+          toast.success(data.message)
+        } else {
+          toast.success(`Парсер нашел ${data.fabricsCount || 0} тканей, обновлено/создано: ${data.updatedCount || 0}`)
+        }
       }
-      const data = await response.json()
-      toast.success(`Обновлено: ${data.fabricsCount} тканей`)
+      
       fetchSuppliers()
     } catch (error: any) {
       // Если ошибка о том, что правила не установлены, предлагаем анализ
@@ -168,16 +229,25 @@ export default function SuppliersPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Поставщики</CardTitle>
-            <Button
-              onClick={handleParseAll}
-              disabled={parsingAll}
-              variant="outline"
-            >
-              <RefreshCw
-                className={`mr-2 h-4 w-4 ${parsingAll ? 'animate-spin' : ''}`}
-              />
-              Обновить все данные
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => router.push('/exclusions')}
+                variant="outline"
+              >
+                <Ban className="mr-2 h-4 w-4" />
+                Исключения парсинга
+              </Button>
+              <Button
+                onClick={handleParseAll}
+                disabled={parsingAll}
+                variant="outline"
+              >
+                <RefreshCw
+                  className={`mr-2 h-4 w-4 ${parsingAll ? 'animate-spin' : ''}`}
+                />
+                Обновить все данные
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -337,92 +407,6 @@ export default function SuppliersPage() {
                             <FileText className="h-3 w-3 mr-1" />
                             Прайс
                           </Button>
-                          {supplier.parsingMethod === 'email' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedSupplier(supplier)
-                                setEmailSettingsOpen(true)
-                              }}
-                              className="text-xs px-2 h-7"
-                              title="Настройки Email"
-                            >
-                              Email
-                            </Button>
-                          )}
-                          {supplier.parsingMethod === 'email' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={async () => {
-                                try {
-                                  setCheckingEmail(supplier.id)
-                                  const response = await fetch(`/api/suppliers/${supplier.id}/parse-email`, {
-                                    method: 'POST',
-                                  })
-                                  
-                                  // Check content type before parsing
-                                  const contentType = response.headers.get('content-type')
-                                  const isJson = contentType && contentType.includes('application/json')
-                                  
-                                  if (!response.ok) {
-                                    let errorMessage = 'Failed to check email'
-                                    if (isJson) {
-                                      try {
-                                        const error = await response.json()
-                                        errorMessage = error.error || errorMessage
-                                      } catch (e) {
-                                        // If JSON parsing fails, try to get text
-                                        const text = await response.text()
-                                        errorMessage = text || errorMessage
-                                      }
-                                    } else {
-                                      // If not JSON, try to extract error from HTML or use status text
-                                      const text = await response.text()
-                                      // Try to find error message in HTML
-                                      const match = text.match(/<title[^>]*>([^<]+)<\/title>/i) || 
-                                                   text.match(/<h1[^>]*>([^<]+)<\/h1>/i) ||
-                                                   text.match(/error[^>]*>([^<]+)/i)
-                                      errorMessage = match ? match[1] : response.statusText || errorMessage
-                                    }
-                                    throw new Error(errorMessage)
-                                  }
-                                  
-                                  if (!isJson) {
-                                    const text = await response.text()
-                                    throw new Error(`Server returned non-JSON response: ${text.substring(0, 100)}`)
-                                  }
-                                  
-                                  const data = await response.json()
-                                  if (data.emailsChecked === 0 && data.message) {
-                                    toast.warning(
-                                      `${data.message} Проверено писем: ${data.emailsChecked}`
-                                    )
-                                  } else {
-                                    toast.success(
-                                      `Проверено писем: ${data.emailsChecked}, обработано вложений: ${data.attachmentsProcessed}, найдено тканей: ${data.fabricsCount}`
-                                    )
-                                  }
-                                  fetchSuppliers()
-                                } catch (error: any) {
-                                  console.error('Email check error:', error)
-                                  toast.error('Ошибка проверки email: ' + (error.message || 'Unknown error'))
-                                } finally {
-                                  setCheckingEmail(null)
-                                }
-                              }}
-                              disabled={checkingEmail === supplier.id}
-                              className="text-xs px-2 h-7"
-                              title="Проверить Email"
-                            >
-                              {checkingEmail === supplier.id ? (
-                                <RefreshCw className="h-3 w-3 animate-spin" />
-                              ) : (
-                                '📧'
-                              )}
-                            </Button>
-                          )}
                           <Button
                             size="sm"
                             variant="secondary"

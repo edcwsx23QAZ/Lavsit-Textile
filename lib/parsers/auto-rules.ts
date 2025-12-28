@@ -134,6 +134,116 @@ export function createAutoRules(
     
     // Пропускаем строки, которые не содержат "Ткань" в столбце C
     rules.skipPatterns = ['пог. м', 'Ед.изм.', 'отчет создан']
+  } else if (supplierName === 'Tex.Group' || supplierName === 'Fancy Fabric') {
+    // Tex.Group: колонка B (индекс 1) - коллекция и цвет, колонка D (индекс 3) - наличие
+    rules.columnMappings.collection = 1 // B = индекс 1
+    rules.columnMappings.inStock = 3 // D = индекс 3
+    
+    // Специальное правило для Tex.Group: первое слово - коллекция, цифры и остальное - цвет
+    rules.specialRules = {
+      texGroupPattern: true,
+    }
+    
+    // Пропускаем заголовки если они есть
+    if (analysis.structure.headers) {
+      rules.skipRows = [1]
+      rules.headerRow = 1
+    }
+  } else if (supplierName === 'Vektor') {
+    // Vektor: колонка A (индекс 0) - коллекция+цвет, колонка E (индекс 4) - единица измерения, колонка F (индекс 5) - наличие/метраж
+    rules.columnMappings.collection = 0 // A = индекс 0
+    rules.columnMappings.inStock = 5 // F = индекс 5 (наличие/метраж)
+    
+    // Специальные правила для Vektor
+    rules.specialRules = {
+      removeTkanPrefix: true, // Удаление префикса "Ткань"
+      removeKozhZam: true, // Удаление "КОЖ ЗАМ" и "КОЖ ЗАМ АВТО"
+      vektorPattern: true, // Специальный паттерн парсинга для Vektor
+    }
+    
+    // Пропускаем строки с "Сетка" и "ФУРНИТУРА"
+    rules.skipPatterns = ['Сетка', 'ФУРНИТУРА', 'Остатки товаров', 'Область учета', 'Номенклатура']
+    
+    // Пропускаем заголовки и служебные строки (первые 9 строк)
+    rules.skipRows = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    rules.headerRow = 9
+  } else if (supplierName === 'Аметист') {
+    // Аметист: колонка C (индекс 2) - коллекция, E (индекс 4) - цвет, G (индекс 6) - наличие, J (индекс 9) - дата
+    rules.columnMappings.collection = 2 // C = индекс 2
+    rules.columnMappings.color = 4 // E = индекс 4
+    rules.columnMappings.inStock = 6 // G = индекс 6
+    rules.columnMappings.nextArrivalDate = 9 // J = индекс 9
+    
+    // Специальное правило для Аметиста: удаление первого слова цвета, если оно совпадает с коллекцией
+    rules.specialRules = {
+      ametistColorPattern: true, // Удаление первого слова цвета, если совпадает с коллекцией
+    }
+    
+    // Пропускаем заголовки если они есть
+    if (analysis.structure.headers) {
+      rules.skipRows = [1]
+      rules.headerRow = 1
+    }
+  } else if (supplierName === 'TextileNova') {
+    // TextileNova: колонка A (индекс 0) - коллекция и цвет, B (индекс 1) - остатки, C (индекс 2) - дата
+    rules.columnMappings.collection = 0 // A = индекс 0
+    rules.columnMappings.inStock = 1 // B = индекс 1 (остатки)
+    rules.columnMappings.nextArrivalDate = 2 // C = индекс 2 (дата)
+    
+    // Специальные правила для TextileNova
+    rules.specialRules = {
+      textilenovaPattern: true, // Специальный паттерн для TextileNova
+    }
+    
+    // Пропускаем заголовки если они есть
+    if (analysis.structure.headers) {
+      rules.skipRows = [1]
+      rules.headerRow = 1
+    }
+  } else if (supplierName === 'Viptextil') {
+    // Viptextil: колонка A (индекс 0) - коллекция и цвет, B (индекс 1) - наличие
+    rules.columnMappings.collection = 0 // A = индекс 0
+    rules.columnMappings.inStock = 1 // B = индекс 1 (наличие)
+    
+    // Специальные правила для Viptextil: первое слово - коллекция, остальное - цвет (может быть текстом)
+    rules.specialRules = {
+      viptextilPattern: true, // Первое слово - коллекция, остальное - цвет (текст, не только цифры)
+    }
+    
+    // Пропускаем заголовки если они есть
+    if (analysis.structure.headers) {
+      rules.skipRows = [1, 2] // Пропускаем первую строку (заголовок) и вторую (пустая или "Остатки")
+      rules.headerRow = 1
+    } else {
+      // Если заголовки не определены автоматически, но есть строка с "Номенклатура"
+      const firstRow = analysis.sampleData[0] || []
+      if (firstRow.some(cell => cell.toLowerCase().includes('номенклатура'))) {
+        rules.skipRows = [1, 2]
+        rules.headerRow = 1
+      }
+    }
+    
+    // Добавляем паттерны для пропуска заголовков разделов
+    if (!rules.skipPatterns) {
+      rules.skipPatterns = []
+    }
+    rules.skipPatterns.push(
+      'ИСКУССТВЕННАЯ КОЖА',
+      'Кожа иск',
+      'Кожа иск.',
+      'ТКАНИ',
+      'Жаккард',
+      'Шенилл',
+      'Шенилл (рас)',
+      'Компаньон',
+      'Основа',
+      'Остатки',
+      'Итого',
+      'Номенклатура'
+    )
+    
+    // Пропускаем строки, где второй столбец пуст (заголовки коллекций)
+    // Это будет обработано в парсере
   }
 
   // Автоматически определяем строки для пропуска на основе пустых или заголовочных строк

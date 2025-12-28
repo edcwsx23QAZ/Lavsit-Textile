@@ -44,9 +44,12 @@ model Fabric {
   category        Int? // Категория ткани (1-16)
   imageUrl        String? // URL изображения ткани
   colorHex        String? // HEX код доминирующего цвета для палитры
+  fabricType      String? // Тип ткани (одинаковый для всех цветов в коллекции)
+  description     String? // Описание ткани (одинаковое для всех цветов в коллекции)
   lastUpdatedAt   DateTime  @default(now())
   nextArrivalDate DateTime?
   comment         String?
+  excludedFromParsing Boolean @default(false) // Исключена ли ткань из парсинга
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -54,6 +57,10 @@ model Fabric {
   @@index([collection])
   @@index([lastUpdatedAt])
   @@index([category])
+  @@index([excludedFromParsing])
+  @@index([supplierId, collection, colorNumber]) // Составной индекс для быстрого поиска
+  @@index([inStock, excludedFromParsing]) // Составной индекс для фильтрации
+  @@index([supplierId, excludedFromParsing]) // Составной индекс для фильтрации по поставщику
 }
 
 model ParsingRule {

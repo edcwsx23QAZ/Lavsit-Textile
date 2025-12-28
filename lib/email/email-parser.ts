@@ -184,7 +184,7 @@ export class EmailParser {
 
       console.log(`[EmailParser] Checking attachment: "${filename}", contentType: "${contentType}", size: ${size} bytes`)
 
-      // Check if it's an Excel file
+      // Check if it's an Excel file or ZIP archive
       const isExcel = 
         contentType.includes('spreadsheet') ||
         contentType.includes('excel') ||
@@ -194,9 +194,17 @@ export class EmailParser {
         filename.endsWith('.xlsx') ||
         filename.endsWith('.XLS') ||
         filename.endsWith('.XLSX')
+      
+      const isZip = 
+        contentType.includes('zip') ||
+        contentType.includes('application/zip') ||
+        contentType.includes('application/x-zip-compressed') ||
+        filename.endsWith('.zip') ||
+        filename.endsWith('.ZIP')
 
-      if (isExcel) {
-        console.log(`[EmailParser] Found Excel attachment: "${filename}"`)
+      if (isExcel || isZip) {
+        const fileType = isExcel ? 'Excel' : 'ZIP'
+        console.log(`[EmailParser] Found ${fileType} attachment: "${filename}"`)
         excelAttachments.push({
           filename: filename,
           content: attachment.content as Buffer,
@@ -204,7 +212,7 @@ export class EmailParser {
           size: size,
         })
       } else {
-        console.log(`[EmailParser] Skipping non-Excel attachment: "${filename}"`)
+        console.log(`[EmailParser] Skipping non-Excel/ZIP attachment: "${filename}"`)
       }
     }
 

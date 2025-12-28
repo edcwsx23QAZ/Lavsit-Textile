@@ -265,6 +265,7 @@ export async function checkSupplierEmails(): Promise<void> {
                   }
 
                   // Update database
+                  const { validateDate } = await import('@/lib/date-validation')
                   await prisma.$transaction([
                     prisma.fabric.deleteMany({
                       where: { supplierId: supplier.id },
@@ -274,6 +275,7 @@ export async function checkSupplierEmails(): Promise<void> {
                         data: {
                           ...fabric,
                           supplierId: supplier.id,
+                          nextArrivalDate: validateDate(fabric.nextArrivalDate),
                           lastUpdatedAt: new Date(),
                         },
                       })

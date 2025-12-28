@@ -21,68 +21,104 @@ export async function POST(
     }
 
     let parser
-    switch (supplier.name) {
-      case 'Artvision':
-        parser = new ArtvisionParser(supplier.id, supplier.name)
-        break
-      case 'Союз-М':
-        parser = new SouzmParser(supplier.id, supplier.name)
-        break
-      case 'Домиарт':
-        parser = new DomiartParser(supplier.id, supplier.name)
-        break
-      case 'Артекс':
-        const { ArteksParser } = await import('@/lib/parsers/arteks-parser')
-        parser = new ArteksParser(supplier.id, supplier.name)
-        break
-      case 'TextileData':
-        const { TextileDataParser } = await import('@/lib/parsers/textiledata-parser')
-        parser = new TextileDataParser(supplier.id, supplier.name)
-        break
-      case 'NoFrames':
-        const { NoFramesParser } = await import('@/lib/parsers/noframes-parser')
-        parser = new NoFramesParser(supplier.id, supplier.name)
-        break
-      case 'email':
-        // For email type, we need to get the latest unprocessed attachment
-        const { EmailParser } = await import('@/lib/email/email-parser')
-        const { EmailExcelParser } = await import('@/lib/parsers/email-excel-parser')
-        
-        if (!supplier.emailConfig) {
-          return NextResponse.json(
-            { error: 'Email configuration not found. Please configure email settings first.' },
-            { status: 400 }
-          )
-        }
-
-        const emailConfig = JSON.parse(supplier.emailConfig)
-        const emailParser = new EmailParser(emailConfig)
-        
-        // Get unprocessed attachments
-        const unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id)
-        
-        if (unprocessedFiles.length === 0) {
-          return NextResponse.json(
-            { error: 'No unprocessed email attachments found. Please check emails first using /parse-email endpoint.' },
-            { status: 400 }
-          )
-        }
-
-        // Use the most recent file
-        const filePath = unprocessedFiles[0]
-        parser = new EmailExcelParser(supplier.id, supplier.name)
-        
-        // Override analyze method to use file path
-        const originalAnalyze = parser.analyze.bind(parser)
-        parser.analyze = async () => {
-          return originalAnalyze(filePath)
-        }
-        break
-      default:
+    
+    // Проверяем метод парсинга для email-поставщиков
+    if (supplier.parsingMethod === 'email') {
+      // For email type, we need to get the latest unprocessed attachment
+      const { EmailParser } = await import('@/lib/email/email-parser')
+      
+      if (!supplier.emailConfig) {
         return NextResponse.json(
-          { error: 'Unknown supplier' },
+          { error: 'Email configuration not found. Please configure email settings first.' },
           { status: 400 }
         )
+      }
+
+      const emailConfig = JSON.parse(supplier.emailConfig)
+      const emailParser = new EmailParser(emailConfig)
+      
+      // Get unprocessed attachments
+      const unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id)
+      
+      if (unprocessedFiles.length === 0) {
+        return NextResponse.json(
+          { error: 'No unprocessed email attachments found. Please check emails first using /parse-email endpoint.' },
+          { status: 400 }
+        )
+      }
+
+      // Use the most recent file
+      const filePath = unprocessedFiles[0]
+      
+      // Выбираем парсер в зависимости от поставщика
+      if (supplier.name === 'Аметист') {
+        const { AmetistParser } = await import('@/lib/parsers/ametist-parser')
+        parser = new AmetistParser(supplier.id, supplier.name)
+      } else {
+        const { EmailExcelParser } = await import('@/lib/parsers/email-excel-parser')
+        parser = new EmailExcelParser(supplier.id, supplier.name)
+      }
+      
+      // Override analyze method to use file path
+      const originalAnalyze = parser.analyze.bind(parser)
+      parser.analyze = async () => {
+        return originalAnalyze(filePath)
+      }
+    } else {
+      // Для остальных поставщиков используем switch по имени
+      switch (supplier.name) {
+        case 'Artvision':
+          parser = new ArtvisionParser(supplier.id, supplier.name)
+          break
+        case 'Союз-М':
+          parser = new SouzmParser(supplier.id, supplier.name)
+          break
+        case 'Домиарт':
+          parser = new DomiartParser(supplier.id, supplier.name)
+          break
+        case 'Артекс':
+          const { ArteksParser } = await import('@/lib/parsers/arteks-parser')
+          parser = new ArteksParser(supplier.id, supplier.name)
+          break
+        case 'TextileData':
+          const { TextileDataParser } = await import('@/lib/parsers/textiledata-parser')
+          parser = new TextileDataParser(supplier.id, supplier.name)
+          break
+        case 'NoFrames':
+          const { NoFramesParser } = await import('@/lib/parsers/noframes-parser')
+          parser = new NoFramesParser(supplier.id, supplier.name)
+          break
+        case 'Tex.Group':
+        case 'Fancy Fabric':
+          const { TexGroupParser } = await import('@/lib/parsers/texgroup-parser')
+          parser = new TexGroupParser(supplier.id, supplier.name)
+          break
+        case 'Vektor':
+          const { VektorParser } = await import('@/lib/parsers/vektor-parser')
+          parser = new VektorParser(supplier.id, supplier.name)
+          break
+        case 'TextileNova':
+          const { TextileNovaParser } = await import('@/lib/parsers/textilenova-parser')
+          parser = new TextileNovaParser(supplier.id, supplier.name)
+          break
+        case 'Viptextil':
+          const { ViptextilParser } = await import('@/lib/parsers/viptextil-parser')
+          parser = new ViptextilParser(supplier.id, supplier.name)
+          break
+        case 'Artefact':
+          const { ArtefactParser } = await import('@/lib/parsers/artefact-parser')
+          parser = new ArtefactParser(supplier.id, supplier.name)
+          break
+        case 'Эгида':
+          const { EgidaParser } = await import('@/lib/parsers/egida-parser')
+          parser = new EgidaParser(supplier.id, supplier.name)
+          break
+        default:
+          return NextResponse.json(
+            { error: 'Unknown supplier' },
+            { status: 400 }
+          )
+      }
     }
 
     // For email type, analyze method is already overridden to use file path

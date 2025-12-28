@@ -528,3 +528,4 @@ regenerate-prisma.bat
 2. Состояние базы данных через Prisma Studio (`npm run db:studio`)
 3. Документацию в папке `docs/`
 
+
