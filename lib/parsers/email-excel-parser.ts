@@ -156,10 +156,12 @@ export class EmailExcelParser extends BaseParser {
       }
 
       // Конвертируем в JSON для удобной обработки
+      // Используем raw: true для получения точных значений ячеек (включая строки с запятыми)
+      // Это позволяет корректно обрабатывать числа с запятыми как десятичными разделителями
       const jsonData = XLSX.utils.sheet_to_json(worksheet, {
         header: 1,
         defval: '',
-        raw: false,
+        raw: true,
       }) as any[][]
 
       console.log(`[EmailExcelParser] Парсинг вкладки "${sheetName}" (${jsonData.length} строк)`)
@@ -239,9 +241,45 @@ export class EmailExcelParser extends BaseParser {
             // Нортекс: столбец E (4) - галочка "V" для наличия < 100м
             // Столбец F (5) - может быть галочка "V", метраж (цифры), дата прихода (текст), комментарий
             // Столбец G (6) - если заполнен, в наличии, метраж 100+м
-            const eValue = row[4] ? String(row[4]).trim() : ''
-            const fValue = row[5] ? String(row[5]).trim() : ''
-            const gValue = row[6] ? String(row[6]).trim() : ''
+            
+            // Получаем значения из ячеек напрямую для точности (как в AmetistParser)
+            // Преобразуем индексы колонок в буквы (4 -> E, 5 -> F, 6 -> G)
+            const colE = String.fromCharCode(65 + 4) // E
+            const colF = String.fromCharCode(65 + 5) // F
+            const colG = String.fromCharCode(65 + 6) // G
+            
+            const cellE = worksheet[`${colE}${rowNumber}`]
+            const cellF = worksheet[`${colF}${rowNumber}`]
+            const cellG = worksheet[`${colG}${rowNumber}`]
+            
+            // Получаем значения с приоритетом cell.w (отформатированное строковое значение)
+            let eValue = ''
+            let fValue = ''
+            let gValue = ''
+            
+            if (cellE) {
+              eValue = (cellE.w !== undefined && typeof cellE.w === 'string') 
+                ? cellE.w.trim() 
+                : String(cellE.v || row[4] || '').trim()
+            } else {
+              eValue = row[4] ? String(row[4]).trim() : ''
+            }
+            
+            if (cellF) {
+              fValue = (cellF.w !== undefined && typeof cellF.w === 'string') 
+                ? cellF.w.trim() 
+                : String(cellF.v || row[5] || '').trim()
+            } else {
+              fValue = row[5] ? String(row[5]).trim() : ''
+            }
+            
+            if (cellG) {
+              gValue = (cellG.w !== undefined && typeof cellG.w === 'string') 
+                ? cellG.w.trim() 
+                : String(cellG.v || row[6] || '').trim()
+            } else {
+              gValue = row[6] ? String(row[6]).trim() : ''
+            }
 
             // Проверяем столбец G (100+м)
             if (gValue) {
@@ -258,11 +296,54 @@ export class EmailExcelParser extends BaseParser {
                 finalInStock = true
                 finalMeterage = null
               } else if (/^\d+[\.,]?\d*/.test(fValue)) {
-                // Цифры - метраж
-                const match = fValue.match(/^(\d+[\.,]?\d*)/)
-                if (match) {
-                  finalMeterage = parseFloat(match[1].replace(',', '.'))
+                // Цифры - метраж (улучшенный парсинг как в AmetistParser)
+                let numValue: number | null = null
+                
+                // Парсим значение в зависимости от его типа
+                if (typeof fValue === 'string') {
+                  let valueStr = String(fValue).trim()
+                  
+                  // Убираем знаки > и < для извлечения числа
+                  const cleanedStr = valueStr.replace(/^[<>≤≥]+|[<>]+$/g, '').trim()
+                  
+                  // КРИТИЧНО: Сначала ищем число с десятичной частью (85,6 или 85.6)
+                  // Это важно для правильного парсинга значений типа "85,6" из Excel
+                  const decimalMatch = cleanedStr.match(/(\d+)[,.](\d+)/)
+                  if (decimalMatch) {
+                    const wholePart = decimalMatch[1]
+                    const decimalPart = decimalMatch[2]
+                    const extractedStr = `${wholePart}.${decimalPart}`
+                    numValue = parseFloat(extractedStr)
+                    console.log(`[EmailExcelParser] Нортекс: найдено число с десятичной частью = ${numValue} (из "${fValue}")`)
+                  } else {
+                    // Если нет десятичной части, пробуем распарсить всю строку как число
+                    // Убираем пробелы, заменяем запятую на точку
+                    let normalizedStr = cleanedStr.replace(/\s+/g, '').replace(/,/g, '.')
+                    numValue = parseFloat(normalizedStr)
+                    
+                    // Если не удалось, ищем первое целое число в строке
+                    if (isNaN(numValue) || numValue === 0) {
+                      const integerMatch = cleanedStr.match(/(\d+)/)
+                      if (integerMatch) {
+                        numValue = parseFloat(integerMatch[1])
+                      }
+                    }
+                  }
+                } else if (typeof fValue === 'number') {
+                  // Если значение уже число, используем его
+                  if (!isNaN(fValue) && fValue > 0) {
+                    numValue = fValue
+                  }
+                }
+                
+                if (numValue !== null && !isNaN(numValue) && numValue > 0) {
+                  finalMeterage = numValue // Сохраняем точное значение без округления
                   finalInStock = true
+                  
+                  // Если число меньше 10, добавляем комментарий (как в AmetistParser)
+                  if (numValue < 10) {
+                    finalComment = 'ВНИМАНИЕ, МАЛО!'
+                  }
                 }
               } else if (/приход|поступление|декабрь|январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь/i.test(fValue)) {
                 // Текст с датой прихода - нет в наличии
@@ -394,10 +475,11 @@ export class EmailExcelParser extends BaseParser {
     console.log(`[EmailExcelParser] Используется вкладка "${worksheetName}" для анализа`)
 
     // Конвертируем в JSON для анализа
+    // Используем raw: true для консистентности с методом parse
     const jsonData = XLSX.utils.sheet_to_json(worksheet, {
       header: 1,
       defval: '',
-      raw: false,
+      raw: true,
     }) as any[][]
 
     // Собираем первые 15 строк для анализа
@@ -504,13 +586,35 @@ export class EmailExcelParser extends BaseParser {
     const str = String(text).trim()
     if (!str || str === '-' || str.toLowerCase() === 'нет') return null
 
-    // Извлекаем число из текста (может быть "10 м", "10м", "10" и т.д.)
-    const match = str.match(/(\d+[\.,]?\d*)/)
-    if (match) {
-      return parseFloat(match[1].replace(',', '.'))
+    // Улучшенный парсинг метража по примеру AmetistParser
+    // Убираем знаки > и < для извлечения числа
+    const cleanedStr = str.replace(/^[<>≤≥]+|[<>]+$/g, '').trim()
+    
+    // КРИТИЧНО: Сначала ищем число с десятичной частью (85,6 или 85.6)
+    // Это важно для правильного парсинга значений типа "85,6" из Excel
+    const decimalMatch = cleanedStr.match(/(\d+)[,.](\d+)/)
+    if (decimalMatch) {
+      const wholePart = decimalMatch[1]
+      const decimalPart = decimalMatch[2]
+      const extractedStr = `${wholePart}.${decimalPart}`
+      return parseFloat(extractedStr)
     }
-
-    return null
+    
+    // Если нет десятичной части, пробуем распарсить всю строку как число
+    // Убираем пробелы, заменяем запятую на точку
+    let normalizedStr = cleanedStr.replace(/\s+/g, '').replace(/,/g, '.')
+    const numValue = parseFloat(normalizedStr)
+    
+    // Если не удалось, ищем первое целое число в строке
+    if (isNaN(numValue) || numValue === 0) {
+      const integerMatch = cleanedStr.match(/(\d+)/)
+      if (integerMatch) {
+        return parseFloat(integerMatch[1])
+      }
+      return null
+    }
+    
+    return numValue
   }
 
   protected parsePrice(text: string): number | null {

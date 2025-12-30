@@ -2,7 +2,7 @@ import Imap from 'imap'
 import { simpleParser, ParsedMail } from 'mailparser'
 import * as fs from 'fs'
 import * as path from 'path'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 
 export interface EmailConfig {
   host: string
@@ -12,8 +12,9 @@ export interface EmailConfig {
   password: string
   fromEmail?: string // Email address to filter by
   subjectFilter?: string // Subject filter (optional)
-  searchUnreadOnly?: boolean // Search only unread emails (default: true)
-  searchDays?: number // Number of days to search back (default: 7)
+  searchUnreadOnly?: boolean // Search only unread emails (default: false)
+  searchDays?: number // Number of days to search back (default: 90)
+  useAnyLatestAttachment?: boolean // Use any latest attachment (processed or not) instead of only unprocessed (default: false)
 }
 
 export interface EmailAttachment {
@@ -269,18 +270,105 @@ export class EmailParser {
     })
   }
 
-  async getUnprocessedAttachments(supplierId: string): Promise<string[]> {
-    const attachments = await prisma.emailAttachment.findMany({
-      where: {
+  async getUnprocessedAttachments(supplierId: string, useAnyLatest?: boolean): Promise<string[]> {
+    // If useAnyLatest is true, get the latest attachment regardless of processed status
+    // Otherwise, get only unprocessed attachments
+    console.log(`[EmailParser] getUnprocessedAttachments called for supplierId: ${supplierId}, useAnyLatest: ${useAnyLatest}`)
+    
+    // First, check total count of attachments for this supplier
+    const totalCount = await prisma.emailAttachment.count({
+      where: { supplierId },
+    })
+    const unprocessedCount = await prisma.emailAttachment.count({
+      where: { 
         supplierId,
         processed: false,
       },
+    })
+    const processedCount = await prisma.emailAttachment.count({
+      where: { 
+        supplierId,
+        processed: true,
+      },
+    })
+    
+    console.log(`[EmailParser] Total attachments in DB: ${totalCount}, unprocessed: ${unprocessedCount}, processed: ${processedCount}`)
+    
+    const whereClause: any = {
+      supplierId,
+    }
+
+    if (!useAnyLatest) {
+      whereClause.processed = false
+    }
+
+    const attachments = await prisma.emailAttachment.findMany({
+      where: whereClause,
       orderBy: {
         createdAt: 'desc',
       },
+      take: useAnyLatest ? 1 : undefined, // If using latest, only get one
+      select: {
+        id: true,
+        filePath: true,
+        processed: true,
+        createdAt: true,
+      },
     })
 
-    return attachments.map((a) => a.filePath).filter((p) => fs.existsSync(p))
+    console.log(`[EmailParser] Found ${attachments.length} attachment(s) matching criteria`)
+    if (attachments.length > 0) {
+      attachments.forEach((a, idx) => {
+        console.log(`[EmailParser]   ${idx + 1}. ${a.filePath}, processed: ${a.processed}, createdAt: ${a.createdAt}`)
+      })
+    }
+
+    // Check file existence
+    console.log(`[EmailParser] Checking file existence for ${attachments.length} attachment(s)...`)
+    const existingFiles = attachments.map((a) => {
+      const exists = fs.existsSync(a.filePath)
+      console.log(`[EmailParser] Attachment: ${a.filePath}, exists: ${exists}, processed: ${a.processed}, createdAt: ${a.createdAt}`)
+      return { path: a.filePath, exists, attachment: a }
+    }).filter((item) => {
+      if (!item.exists) {
+        console.log(`[EmailParser] ⚠️ File not found on disk: ${item.path}`)
+      }
+      return item.exists
+    }).map(item => item.path)
+    
+    console.log(`[EmailParser] ${existingFiles.length} file(s) exist on disk out of ${attachments.length} attachment(s)`)
+    
+    if (existingFiles.length === 0 && totalCount > 0) {
+      console.log(`[EmailParser] ⚠️ WARNING: Found ${totalCount} attachment(s) in DB, but none exist on disk!`)
+      console.log(`[EmailParser] useAnyLatest: ${useAnyLatest}, unprocessed: ${unprocessedCount}, processed: ${processedCount}`)
+      
+      // Логируем детали о файлах в БД
+      const allAttachments = await prisma.emailAttachment.findMany({
+        where: { supplierId },
+        select: {
+          id: true,
+          filePath: true,
+          processed: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      })
+      
+      console.log(`[EmailParser] Sample attachments from DB (first 5):`)
+      allAttachments.forEach((att, idx) => {
+        const exists = fs.existsSync(att.filePath)
+        console.log(`[EmailParser]   ${idx + 1}. ${att.filePath}, exists: ${exists}, processed: ${att.processed}, createdAt: ${att.createdAt}`)
+      })
+      
+      if (useAnyLatest && processedCount > 0) {
+        console.log(`[EmailParser] ⚠️ CRITICAL: useAnyLatest=true but no files exist on disk! Files may have been deleted. Need to run /parse-email to fetch new emails.`)
+      } else if (!useAnyLatest && unprocessedCount === 0 && processedCount > 0) {
+        console.log(`[EmailParser] 💡 Suggestion: All attachments are marked as processed. Consider enabling "Use any latest attachment" or run /parse-email to fetch new emails.`)
+      }
+    }
+
+    return existingFiles
   }
 }
 
