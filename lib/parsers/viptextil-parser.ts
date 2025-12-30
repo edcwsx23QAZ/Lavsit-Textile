@@ -1,439 +1,290 @@
-import * as cheerio from 'cheerio'
 import axios from 'axios'
-import puppeteer from 'puppeteer'
-import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
+import * as cheerio from 'cheerio'
+import { BaseParser, ParsedFabric, ParsingAnalysis } from './base-parser'
 
 export class ViptextilParser extends BaseParser {
   async parse(url: string): Promise<ParsedFabric[]> {
-    let rules: ParsingRules | null = null
-    try {
-      rules = await this.loadRules()
-    } catch (error) {
-      console.log(`[ViptextilParser] Не удалось загрузить правила из БД, используем дефолтные: ${error}`)
-    }
+    console.log(`[ViptextilParser] Начинаем парсинг по новой логике: ${url}`)
     
-    const defaultRules: ParsingRules = {
-      columnMappings: {
-        collection: 0,
-        inStock: 1,
-      },
-      skipRows: [],
-      skipPatterns: [
-        'ИСКУССТВЕННАЯ КОЖА',
-        'Кожа иск',
-        'Кожа иск.',
-        'ТКАНИ',
-        'Жаккард',
-        'Шенилл',
-        'Шенилл (рас)',
-        'Компаньон',
-        'Основа',
-        'Остатки',
-        'Итого',
-        'Номенклатура',
-      ],
-      specialRules: {
-        viptextilPattern: true,
-      },
-    }
-    
-    const activeRules = rules || defaultRules
-    console.log(`[ViptextilParser] Используются правила: ${rules ? 'из БД' : 'дефолтные'}`)
-
-    // Пробуем сначала через axios, если не получается - используем Puppeteer
-    let html: string
     try {
-      console.log(`[ViptextilParser] Пробуем загрузить через axios...`)
+      // Загружаем HTML страницы через axios
+      console.log(`[ViptextilParser] Загружаем страницу через axios...`)
       const response = await axios.get(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
           'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Accept-Encoding': 'gzip, deflate',
+          'Accept-Encoding': 'gzip, deflate, br',
           'Connection': 'keep-alive',
           'Upgrade-Insecure-Requests': '1',
-          'Referer': 'http://tgn1.viptextil.ru/',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-User': '?1',
+          'Cache-Control': 'max-age=0',
+          'Referer': url,
         },
         timeout: 30000,
+        maxRedirects: 5,
+        validateStatus: function (status) {
+          return status >= 200 && status < 400; // Принимаем редиректы
+        },
       })
-      html = response.data
-      console.log(`[ViptextilParser] ✓ HTML загружен через axios`)
-    } catch (axiosError: any) {
-      if (axiosError.response?.status === 403 || axiosError.code === 'ECONNREFUSED') {
-        console.log(`[ViptextilParser] Ошибка 403 при загрузке через axios, пробуем через Puppeteer...`)
-        // Используем Puppeteer для обхода блокировки
-        const browser = await puppeteer.launch({
-          headless: true,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--disable-blink-features=AutomationControlled',
-            '--disable-web-security',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--disable-extensions',
-            '--disable-plugins',
-          ],
+
+      // Парсим HTML с помощью cheerio
+      const $ = cheerio.load(response.data)
+      console.log(`[ViptextilParser] ✅ HTML загружен успешно, размер: ${response.data.length} символов`)
+
+      // Находим таблицу
+      const tables = $('table')
+      console.log(`[ViptextilParser] 🔍 Поиск таблиц: найдено ${tables.length} таблиц на странице`)
+      
+      // Дополнительная диагностика структуры страницы
+      if (tables.length === 0) {
+        console.log(`[ViptextilParser] ⚠️ Таблицы не найдены, проверяем альтернативные структуры...`)
+        const divsWithTables = $('div').filter((i, el) => {
+          return $(el).find('table').length > 0
         })
-        try {
-          const page = await browser.newPage()
-          await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-          await page.setViewport({ width: 1920, height: 1080 })
-          
-          // Отключаем блокировку запросов и добавляем дополнительные заголовки
-          await page.setExtraHTTPHeaders({
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Referer': 'http://tgn1.viptextil.ru/',
-          })
-          
-          // ВАЖНО: Отключаем request interception, чтобы избежать ERR_BLOCKED_BY_CLIENT
-          // Вместо этого используем прямую загрузку
-          try {
-            console.log(`[ViptextilParser] Пробуем загрузить страницу через Puppeteer...`)
-            await page.goto(url, { 
-              waitUntil: 'domcontentloaded', 
-              timeout: 30000,
-              // Отключаем блокировку рекламы и других расширений
-            })
-            
-            // Ждем немного, чтобы страница полностью загрузилась
-            await page.waitForTimeout(2000)
-            
-            html = await page.content()
-            console.log(`[ViptextilParser] ✓ HTML загружен через Puppeteer, длина: ${html.length} символов`)
-          } catch (gotoError: any) {
-            // Если получили ERR_BLOCKED_BY_CLIENT, пробуем другой подход
-            if (gotoError.message?.includes('ERR_BLOCKED_BY_CLIENT') || gotoError.message?.includes('blocked')) {
-              console.log(`[ViptextilParser] Обнаружена блокировка, пробуем альтернативный метод...`)
-              
-              // Пробуем использовать evaluate для получения HTML через JavaScript
-              try {
-                html = await page.evaluate(async () => {
-                  const response = await fetch(window.location.href, {
-                    headers: {
-                      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                      'Accept-Language': 'ru-RU,ru;q=0.9',
-                    }
-                  })
-                  return await response.text()
-                })
-                console.log(`[ViptextilParser] ✓ HTML получен через evaluate, длина: ${html.length} символов`)
-              } catch (evalError: any) {
-                console.error(`[ViptextilParser] Ошибка при evaluate:`, evalError.message)
-                // Если и это не сработало, пробуем получить HTML напрямую из DOM
-                html = await page.evaluate(() => document.documentElement.outerHTML)
-                console.log(`[ViptextilParser] ✓ HTML получен из DOM, длина: ${html.length} символов`)
-              }
-            } else {
-              throw gotoError
-            }
-          }
-        } catch (puppeteerError: any) {
-          console.error(`[ViptextilParser] Ошибка при использовании Puppeteer:`, puppeteerError.message)
-          // Если Puppeteer не сработал, пробуем использовать curl через child_process
-          console.log(`[ViptextilParser] Пробуем использовать curl как последний вариант...`)
-          const { exec } = await import('child_process')
-          const { promisify } = await import('util')
-          const execAsync = promisify(exec)
-          
-          try {
-            // Используем curl для загрузки HTML
-            const { stdout } = await execAsync(`curl -L -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" "${url}"`)
-            html = stdout
-            console.log(`[ViptextilParser] ✓ HTML загружен через curl, длина: ${html.length} символов`)
-          } catch (curlError: any) {
-            console.error(`[ViptextilParser] Ошибка при использовании curl:`, curlError.message)
-            throw new Error(`Не удалось загрузить HTML страницу Viptextil. Ошибки: axios (${axiosError.message}), puppeteer (${puppeteerError.message}), curl (${curlError.message})`)
-          }
-        } finally {
-          if (browser) {
-            await browser.close()
-          }
+        console.log(`[ViptextilParser] Найдено div-ов с таблицами внутри: ${divsWithTables.length}`)
+        
+        // Проверяем наличие элементов с данными
+        const allRows = $('tr')
+        console.log(`[ViptextilParser] Найдено tr элементов: ${allRows.length}`)
+        
+        const allCells = $('td, th')
+        console.log(`[ViptextilParser] Найдено td/th элементов: ${allCells.length}`)
+      }
+      
+      if (tables.length === 0) {
+        // Попробуем найти таблицу другими способами
+        console.log(`[ViptextilParser] Таблица не найдена, проверяем структуру HTML...`)
+        const bodyText = $('body').text().substring(0, 500)
+        console.log(`[ViptextilParser] Первые 500 символов body: ${bodyText}`)
+        throw new Error('Таблица не найдена на странице')
+      }
+
+      // Проверяем каждую таблицу и выбираем ту, в которой больше всего строк
+      let bestTable = tables.first()
+      let maxRows = 0
+      
+      tables.each((index, tableEl) => {
+        const rowCount = $(tableEl).find('tr').length
+        console.log(`[ViptextilParser] Таблица ${index + 1}: ${rowCount} строк`)
+        if (rowCount > maxRows) {
+          maxRows = rowCount
+          bestTable = $(tableEl)
         }
-      } else {
-        throw axiosError
-      }
-    }
-    
-    const $ = cheerio.load(html)
-    const fabrics: ParsedFabric[] = []
-
-    const table = $('table').first()
-    if (table.length === 0) {
-      throw new Error('Таблица не найдена на странице')
-    }
-
-    let processedCount = 0
-    let skippedCount = 0
-    let addedCount = 0
-    const examples: ParsedFabric[] = []
-    
-    // Проходим по всем строкам таблицы
-    table.find('tr').each((index, row) => {
-      const rowIndex = index + 1
-      const cells = $(row).find('td, th')
-      
-      // Нужно минимум 2 ячейки
-      if (cells.length < 2) {
-        skippedCount++
-        return
-      }
-
-      // Получаем текст из ячеек
-      const col1 = $(cells[0]).text().trim()
-      const col2 = $(cells[1]).text().trim()
-      
-      // Пропускаем полностью пустые строки
-      if (!col1 && !col2) {
-        skippedCount++
-        return
-      }
-      
-      const col1Lower = col1.toLowerCase()
-      const col2Lower = col2.toLowerCase()
-      
-      // Пропускаем заголовки таблицы
-      if (col1Lower.includes('номенклатура') || 
-          col1Lower.includes('итого') ||
-          col1Lower.includes('остатки на:')) {
-        skippedCount++
-        return
-      }
-      
-      // Пропускаем заголовки разделов
-      if (col1Lower.includes('искусственная') ||
-          col1Lower.includes('кожа иск') ||
-          col1Lower === 'ткани' ||
-          col1Lower === 'жакард' ||
-          col1Lower === 'шенилл' ||
-          col1Lower === 'остатки' ||
-          col1Lower === 'итого' ||
-          col1Lower === 'компаньон' ||
-          col1Lower === 'основа') {
-        skippedCount++
-        return
-      }
-      
-      // КЛЮЧЕВАЯ ЛОГИКА: Если вторая колонка пуста - это заголовок коллекции, пропускаем
-      // Если вторая колонка НЕ пуста - это данные о ткани
-      if (!col2 || col2.length === 0) {
-        skippedCount++
-        return
-      }
-      
-      // Пропускаем строки где первая колонка пуста
-      if (!col1 || col1.length === 0) {
-        skippedCount++
-        return
-      }
-      
-      // Парсим коллекцию и цвет: первое слово - коллекция, остальное - цвет
-      // Примеры: 
-      // - "Pegas silk" -> коллекция: "Pegas", цвет: "silk"
-      // - "Pegas silver" -> коллекция: "Pegas", цвет: "silver"
-      // - "Boss mineral blue" -> коллекция: "Boss", цвет: "mineral blue"
-      const parts = col1.split(/\s+/).filter(p => p.trim().length > 0)
-      
-      if (parts.length < 2) {
-        // Если только одно слово, это заголовок коллекции, пропускаем
-        skippedCount++
-        return
-      }
-      
-      const collection = parts[0].trim()
-      const color = parts.slice(1).join(' ').trim()
-      
-      // Проверяем, что есть и коллекция, и цвет
-      if (!collection || !color || collection.length === 0 || color.length === 0) {
-        skippedCount++
-        return
-      }
-      
-      // Парсим наличие
-      // Если напротив цвета есть надпись "есть в наличии" - в наличии
-      // В остальных случаях (например "уточнять наличие по звонку") - не в наличии
-      let inStock: boolean = false
-      if (col2Lower.includes('есть в наличии')) {
-        inStock = true
-      }
-      
-      // Создаем объект ткани
-      const fabric: ParsedFabric = {
-        collection,
-        colorNumber: color,
-        inStock,
-        meterage: null,
-        price: null,
-        nextArrivalDate: null,
-        comment: inStock === false ? col2 : null,
-      }
-      
-      fabrics.push(fabric)
-      addedCount++
-      processedCount++
-      
-      // Сохраняем примеры для логирования
-      if (examples.length < 20) {
-        examples.push(fabric)
-      }
-      
-      // Специальная проверка на примеры из требования
-      if (collection.toLowerCase() === 'pegas' && 
-          (color.toLowerCase() === 'silk' || 
-           color.toLowerCase() === 'silver' || 
-           color.toLowerCase() === 'stone')) {
-        console.log(`[ViptextilParser] ✅ НАЙДЕН ПРИМЕР: "${collection}" "${color}" - ${inStock ? 'В наличии' : 'Не в наличии'} (${col2})`)
-      }
-    })
-    
-    console.log(`[ViptextilParser] ИТОГО: обработано валидных строк: ${processedCount}, добавлено тканей: ${addedCount}, пропущено: ${skippedCount}`)
-    
-    if (examples.length > 0) {
-      console.log(`[ViptextilParser] Примеры найденных тканей (первые ${Math.min(examples.length, 20)}):`)
-      examples.forEach((f, i) => {
-        console.log(`  ${i + 1}. "${f.collection}" "${f.colorNumber}" - ${f.inStock ? 'В наличии' : 'Не в наличии'}`)
       })
-    }
-    
-    if (addedCount === 0) {
-      console.log(`[ViptextilParser] ❌ ВНИМАНИЕ: Не добавлено ни одной ткани!`)
-      console.log(`[ViptextilParser] Обработано валидных строк: ${processedCount}, пропущено: ${skippedCount}`)
       
-      // Дополнительная диагностика: показываем первые 30 строк
-      console.log(`[ViptextilParser] Первые 30 строк таблицы для диагностики:`)
-      table.find('tr').slice(0, 30).each((index, row) => {
+      console.log(`[ViptextilParser] ✅ Используем таблицу с максимальным количеством строк: ${maxRows} строк`)
+      const table = bestTable
+
+      // Получаем текст таблицы как при копировании в Excel (с табуляцией между колонками)
+      console.log(`[ViptextilParser] 📊 Извлекаем данные из таблицы...`)
+      const textRows: string[] = []
+      let rowCount = 0
+      let skippedRows = 0
+
+      table.find('tr').each((index, row) => {
+        rowCount++
         const cells = $(row).find('td, th')
-        if (cells.length >= 2) {
+        const cellCount = cells.length
+        
+        // Логируем первые 200 строк полностью для диагностики
+        if (index < 200) {
+          const allCellTexts = cells.map((i, cell) => $(cell).text().trim()).get()
+          console.log(`[ViptextilParser] Строка ${index + 1}: ${cellCount} ячеек -> [${allCellTexts.join(' | ')}]`)
+        }
+        
+        if (cellCount >= 2) {
+          // Получаем текст из первых двух ячеек
           const col1 = $(cells[0]).text().trim()
           const col2 = $(cells[1]).text().trim()
-          console.log(`  Строка ${index + 1}: "${col1}" | "${col2}"`)
+          
+          // Объединяем с табуляцией (как в Excel)
+          if (col1 || col2) {
+            textRows.push(`${col1}\t${col2}`)
+          } else {
+            skippedRows++
+          }
+        } else {
+          skippedRows++
         }
       })
-    }
-
-    return fabrics
-  }
-
-  async analyze(url: string): Promise<ParsingAnalysis> {
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-      },
-      timeout: 30000,
-    })
-    const $ = cheerio.load(response.data)
-    const questions: ParsingAnalysis['questions'] = []
-    const sampleData: any[] = []
-
-    const table = $('table').first()
-    if (table.length === 0) {
-      throw new Error('Таблица не найдена на странице')
-    }
-
-    // Собираем первые 50 строк для анализа
-    table.find('tr').slice(0, 50).each((index, row) => {
-      const cells = $(row).find('td, th')
-      const rowData: string[] = []
-      cells.each((_, cell) => {
-        rowData.push($(cell).text().trim())
-      })
-      if (rowData.length > 0) {
-        sampleData.push(rowData)
+      
+      console.log(`[ViptextilParser] 📊 Результаты извлечения:`)
+      console.log(`[ViptextilParser]   - Всего строк (tr): ${rowCount}`)
+      console.log(`[ViptextilParser]   - Строк с 2+ ячейками: ${textRows.length}`)
+      console.log(`[ViptextilParser]   - Пропущено строк: ${skippedRows}`)
+      
+      if (textRows.length === 0) {
+        console.log(`[ViptextilParser] ❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось извлечь ни одной строки из таблицы!`)
+        console.log(`[ViptextilParser] Проверьте структуру HTML таблицы`)
       }
-    })
 
-    const maxColumns = Math.max(...sampleData.map(row => row.length), 0)
+      const tableText = textRows.join('\n')
+      console.log(`[ViptextilParser] Получен текст таблицы, длина: ${tableText.length} символов, строк: ${textRows.length}`)
 
-    // Определяем заголовки
-    let hasHeaders = false
-    const firstRow = sampleData[0] || []
-    
-    hasHeaders = firstRow.some(cell => {
-      const lower = cell.toLowerCase()
-      return lower.includes('номенклатура') || 
-             lower.includes('итого') ||
-             (lower.includes('остатки') && lower.includes('на:'))
-    })
+      // Парсим текст как таблицу Excel (разделитель - табуляция)
+      const lines = tableText.split('\n').filter(line => line.trim().length > 0)
+      console.log(`[ViptextilParser] Разделено на строк: ${lines.length}`)
+      
+      if (lines.length === 0) {
+        console.log(`[ViptextilParser] ❌ ВНИМАНИЕ: Нет строк для обработки!`)
+        console.log(`[ViptextilParser] Полный текст таблицы (первые 500 символов): "${tableText.substring(0, 500)}"`)
+      }
 
-    // Ищем строки с данными о тканях
-    let dataRowIndex = -1
-    for (let i = 0; i < sampleData.length; i++) {
-      const row = sampleData[i]
-      if (row.length >= 2) {
-        const col1 = row[0]?.trim() || ''
-        const col2 = row[1]?.trim() || ''
-        
-        if (!col1 || !col2) continue
-        
+      const fabrics: ParsedFabric[] = []
+      let processedCount = 0
+      let skippedCount = 0
+      let skippedEmptyCol2 = 0
+      let skippedHeaders = 0
+      let skippedSingleWord = 0
+
+      for (const line of lines) {
+        // Разделяем строку на колонки по табуляции
+        const columns = line.split('\t').map(col => col.trim())
+
+        // Должно быть минимум 2 колонки
+        if (columns.length < 2) {
+          skippedCount++
+          continue
+        }
+
+        const col1 = columns[0] // Коллекция и цвет
+        const col2 = columns[1] // Наличие
+
+        // КЛЮЧЕВАЯ ЛОГИКА: Если второй столбец пустой - игнорируем строку
+        if (!col2 || col2.length === 0) {
+          skippedCount++
+          skippedEmptyCol2++
+          continue
+        }
+
+        // Пропускаем заголовки и служебные строки
         const col1Lower = col1.toLowerCase()
-        if (col1Lower.includes('искусственная') ||
+        const col2Lower = col2.toLowerCase()
+        
+        const isHeader = col1Lower.includes('номенклатура') ||
+            col1Lower.includes('итого') ||
+            col1Lower.includes('остатки на:') ||
+            col1Lower.includes('искусственная') ||
+            col1Lower.includes('кожа иск') ||
             col1Lower === 'ткани' ||
             col1Lower === 'жакард' ||
             col1Lower === 'шенилл' ||
             col1Lower === 'остатки' ||
-            col1Lower === 'итого') {
+            col1Lower === 'компаньон' ||
+            col1Lower === 'основа' ||
+            col1Lower === ''
+        
+        // Пропускаем строки, где первая колонка содержит только название коллекции без цвета
+        const isSingleWord = col1Lower && !col1.includes(' ') && col2Lower !== 'есть в наличии' && !col2Lower.includes('уточнять')
+        
+        if (isHeader || isSingleWord) {
+          skippedCount++
+          if (isHeader) skippedHeaders++
+          if (isSingleWord) skippedSingleWord++
           continue
         }
-        
+
+        // Парсим коллекцию и цвет: первое слово - коллекция, остальное - цвет
         const parts = col1.split(/\s+/).filter(p => p.trim().length > 0)
-        if (parts.length >= 2) {
-          const col2Lower = col2.toLowerCase()
-          if (col2Lower.includes('есть в наличии') || col2Lower.includes('уточнять')) {
-            dataRowIndex = i
-            break
-          }
+        
+        if (parts.length < 2) {
+          // Если только одно слово, это заголовок коллекции, пропускаем
+          skippedCount++
+          continue
         }
+
+        const collection = parts[0].trim()
+        const color = parts.slice(1).join(' ').trim()
+
+        // Проверяем, что есть и коллекция, и цвет
+        if (!collection || !color || collection.length === 0 || color.length === 0) {
+          skippedCount++
+          continue
+        }
+
+        // Парсим наличие
+        // Если во втором столбце написано "есть в наличии" - в наличии
+        // Остальные значения означают "нет в наличии"
+        const inStock = col2Lower.includes('есть в наличии')
+
+        // Создаем объект ткани
+        const fabric: ParsedFabric = {
+          collection,
+          colorNumber: color,
+          inStock,
+          meterage: null,
+          price: null,
+          nextArrivalDate: null,
+          comment: inStock === false ? col2 : null,
+        }
+
+        fabrics.push(fabric)
+        processedCount++
       }
-    }
 
-    if (hasHeaders) {
-      questions.push({
-        id: 'header-row',
-        question: 'Это строка заголовков?',
-        type: 'header',
-        options: ['Да', 'Нет'],
-        default: 'Да',
-      })
-    }
+      console.log(`[ViptextilParser] ИТОГО: обработано: ${processedCount}, пропущено: ${skippedCount}, добавлено тканей: ${fabrics.length}`)
+      console.log(`[ViptextilParser] Детали пропуска: пустой col2: ${skippedEmptyCol2}, заголовки: ${skippedHeaders}, одно слово: ${skippedSingleWord}`)
 
-    questions.push({
-      id: 'collection-column',
-      question: 'В какой колонке находится коллекция и цвет? (A = 1)',
-      type: 'column',
-      options: Array.from({ length: maxColumns }, (_, i) => `Колонка ${i + 1} (${String.fromCharCode(65 + i)})`),
-      default: 'Колонка 1 (A)',
+      if (fabrics.length > 0) {
+        console.log(`[ViptextilParser] Примеры найденных тканей (первые 10):`)
+        fabrics.slice(0, 10).forEach((f, i) => {
+          console.log(`  ${i + 1}. "${f.collection}" "${f.colorNumber}" - ${f.inStock ? 'В наличии' : 'Не в наличии'}`)
+        })
+      }
+
+      if (fabrics.length === 0) {
+        console.log(`[ViptextilParser] ❌ ВНИМАНИЕ: Не найдено ни одной ткани!`)
+        console.log(`[ViptextilParser] Первые 200 строк текста для диагностики:`)
+        lines.slice(0, 200).forEach((line, i) => {
+          console.log(`  ${i + 1}. "${line}"`)
+        })
+      }
+
+      return fabrics
+    } catch (error: any) {
+      console.error(`[ViptextilParser] Ошибка при парсинге:`, error)
+      throw new Error(`Ошибка парсинга Viptextil: ${error.message}`)
+    }
+  }
+
+  async analyze(url: string): Promise<ParsingAnalysis> {
+    // Для анализа используем ту же логику, что и для парсинга
+    const fabrics = await this.parse(url)
+    
+    const sampleData: any[] = []
+    
+    // Создаем примеры данных для анализа
+    fabrics.slice(0, 20).forEach(fabric => {
+      sampleData.push([`${fabric.collection} ${fabric.colorNumber}`, fabric.inStock ? 'есть в наличии' : 'нет в наличии'])
     })
 
-    questions.push({
-      id: 'inStock-column',
-      question: 'В какой колонке находится наличие? (B = 2)',
-      type: 'column',
-      options: Array.from({ length: maxColumns }, (_, i) => `Колонка ${i + 1} (${String.fromCharCode(65 + i)})`),
-      default: 'Колонка 2 (B)',
-    })
-
-    if (dataRowIndex >= 0 && dataRowIndex < sampleData.length) {
-      const dataRow = sampleData[dataRowIndex]
-      console.log(`[ViptextilParser analyze] Найдена строка с данными на позиции ${dataRowIndex + 1}:`, dataRow)
-    }
+    const questions: ParsingAnalysis['questions'] = [
+      {
+        id: 'collection-column',
+        question: 'В какой колонке находится коллекция и цвет? (A = 1)',
+        type: 'column',
+        options: ['Колонка 1 (A)', 'Колонка 2 (B)'],
+        default: 'Колонка 1 (A)',
+      },
+      {
+        id: 'inStock-column',
+        question: 'В какой колонке находится наличие? (B = 2)',
+        type: 'column',
+        options: ['Колонка 1 (A)', 'Колонка 2 (B)'],
+        default: 'Колонка 2 (B)',
+      },
+    ]
 
     return {
       questions,
       sampleData,
       structure: {
-        columns: maxColumns,
+        columns: 2,
         rows: sampleData.length,
-        headers: hasHeaders ? firstRow : undefined,
       },
     }
   }

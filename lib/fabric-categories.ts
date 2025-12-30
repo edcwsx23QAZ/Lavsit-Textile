@@ -47,14 +47,27 @@ export function getCategoryByPrice(
   // Сортируем категории по возрастанию цены
   const sortedCategories = [...categories].sort((a, b) => a.price - b.price)
 
-  // Если цена меньше или равна стоимости категории, возвращаем эту категорию
-  for (const cat of sortedCategories) {
-    if (pricePerMeter <= cat.price) {
-      return cat.category
+  // Логика выбора категории:
+  // Цена должна быть <= стоимости категории, но > предыдущей
+  // Исключение - последняя категория: любая цена >= стоимости категории относится к ней
+  for (let i = 0; i < sortedCategories.length; i++) {
+    const cat = sortedCategories[i]
+    const prevPrice = i > 0 ? sortedCategories[i - 1].price : 0
+    
+    if (i === sortedCategories.length - 1) {
+      // Последняя категория: любая цена >= стоимости категории
+      if (pricePerMeter >= cat.price) {
+        return cat.category
+      }
+    } else {
+      // Обычная категория: цена > предыдущей и <= текущей
+      if (pricePerMeter > prevPrice && pricePerMeter <= cat.price) {
+        return cat.category
+      }
     }
   }
 
-  // Если цена больше всех категорий, возвращаем последнюю (максимальную)
+  // Если не попали ни в одну категорию (хотя теоретически не должно произойти)
   return sortedCategories[sortedCategories.length - 1]?.category || null
 }
 
@@ -74,6 +87,7 @@ export function calculatePricePerMeter(
 
   return price / meterage
 }
+
 
 
 

@@ -63,3 +63,4 @@ netstat -ano | findstr :4001 | findstr LISTENING
 - **lavsit-textile**: `E:\Программы\cursor\repositary\lavsit-textile` (порт 4001)
 - **lavsit-russia-delivery**: `E:\Программы\cursor\repositary\lavsit-russia-delivery-1763017917119` (другой порт)
 
+

@@ -124,7 +124,12 @@ export class AmetistParser extends BaseParser {
     const sheetName = workbook.SheetNames[0]
     const worksheet = workbook.Sheets[sheetName]
     // Используем raw: true для получения точных значений ячеек (включая строки с запятыми)
-    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: true }) as any[][]
+    // Также используем cellText: false, чтобы получить исходное значение ячейки
+    const data = XLSX.utils.sheet_to_json(worksheet, { 
+      header: 1, 
+      defval: '', 
+      raw: true,
+    }) as any[][]
     
     const fabrics: ParsedFabric[] = []
 
@@ -142,7 +147,7 @@ export class AmetistParser extends BaseParser {
 
     for (let i = startRow; i < data.length; i++) {
       const row = data[i]
-      const rowNumber = i + 1
+      const rowNumber = i + 1 // Номер строки в Excel (начиная с 1)
 
       // Пропускаем строки согласно правилам
       if (rules.skipRows?.includes(rowNumber)) {
@@ -170,36 +175,92 @@ export class AmetistParser extends BaseParser {
       if (!color) continue
 
       // Колонка G (индекс 6) - метраж (точные значения)
-      // Используем правила из базы данных, если они есть, иначе по умолчанию индекс 6
+      // Используем правила из базы данных, если они есть, иначе по умолчанию индекс 6 (колонка G)
+      // В колонке H (индекс 7) находится единица измерения "м"
       const meterageCol = rules.columnMappings.meterage ?? rules.columnMappings.inStock ?? 6
-      const meterageValue = row[meterageCol]
+      
+      // Получаем значение напрямую из ячейки для точности
+      // Преобразуем индекс колонки в букву (6 -> G)
+      const colLetter = String.fromCharCode(65 + meterageCol)
+      const cellAddress = `${colLetter}${rowNumber}`
+      const cell = worksheet[cellAddress]
+      
+      // ДЛЯ ОТЛАДКИ: Проверяем соседние строки для RETRO organza
+      if (collection.toLowerCase().includes('retro') || color.toLowerCase().includes('organza') || color.toLowerCase().includes('retro')) {
+        console.log(`[AmetistParser] ===== ПРОВЕРКА СОСЕДНИХ СТРОК для "${collection}" - "${color}" (строка ${rowNumber}) =====`)
+        // Проверяем строку выше
+        if (rowNumber > 1) {
+          const prevCellAddress = `${colLetter}${rowNumber - 1}`
+          const prevCell = worksheet[prevCellAddress]
+          const prevRow = data[i - 1]
+          console.log(`[AmetistParser] Строка выше (${rowNumber - 1}): ячейка ${prevCellAddress} = ${prevCell?.v} (cell.w = ${prevCell?.w}), row[${meterageCol}] = ${prevRow?.[meterageCol]}`)
+        }
+        // Проверяем текущую строку
+        console.log(`[AmetistParser] Текущая строка (${rowNumber}): ячейка ${cellAddress} = ${cell?.v} (cell.w = ${cell?.w}), row[${meterageCol}] = ${row[meterageCol]}`)
+        // Проверяем строку ниже
+        if (i + 1 < data.length) {
+          const nextCellAddress = `${colLetter}${rowNumber + 1}`
+          const nextCell = worksheet[nextCellAddress]
+          const nextRow = data[i + 1]
+          console.log(`[AmetistParser] Строка ниже (${rowNumber + 1}): ячейка ${nextCellAddress} = ${nextCell?.v} (cell.w = ${nextCell?.w}), row[${meterageCol}] = ${nextRow?.[meterageCol]}`)
+        }
+        console.log(`[AmetistParser] ==========================================`)
+      }
+      
+      // КРИТИЧНО: Приоритет - использовать cell.w (отформатированное строковое значение)
+      // Это даст нам исходное значение с запятой "85,6", если оно было в файле
+      // Excel может преобразовать "85,6" в число 85.6 или даже 100 (если запятая интерпретируется как разделитель тысяч)
+      // cell.w содержит исходное отформатированное значение как строку
+      let meterageValue: any = undefined
+      
+      if (cell) {
+        // ПРИОРИТЕТ 1: Если есть cell.w (отформатированное строковое значение), используем его
+        // Это даст нам исходную строку "85,6" даже если Excel преобразовал её в число
+        if (cell.w !== undefined && typeof cell.w === 'string') {
+          meterageValue = cell.w.trim()
+          console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": используем cell.w = "${meterageValue}" (отформатированное строковое значение)`)
+        } 
+        // ПРИОРИТЕТ 2: Если cell.w нет или это не строка, используем cell.v (исходное значение)
+        else if (cell.v !== undefined) {
+          meterageValue = cell.v
+          console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": используем cell.v = ${meterageValue} (исходное значение, тип: ${typeof meterageValue})`)
+        }
+      }
+      
+      // ПРИОРИТЕТ 3: Если не получили значение из ячейки, используем значение из массива
+      if (meterageValue === undefined || meterageValue === null) {
+        meterageValue = row[meterageCol]
+        console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": используем row[${meterageCol}] = ${JSON.stringify(meterageValue)} (из массива)`)
+      }
 
       let meterage: number | null = null
       let inStock: boolean | null = null
       let comment: string | null = null
 
-      // Парсим значение метража из ячейки столбца G (индекс 6)
-      // Также проверяем следующую колонку (H, индекс 7) на случай, если там единица измерения "м"
-      if (meterageValue !== undefined && meterageValue !== null && meterageValue !== '') {
+      // Парсим значение метража из колонки G (индекс 6)
+      // Единица измерения "м" находится в следующей колонке H (индекс 7)
+      let valueToParse = meterageValue
+
+      if (valueToParse !== undefined && valueToParse !== null && valueToParse !== '') {
         // Логируем исходное значение для отладки
-        console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": значение из столбца ${meterageCol} (${String.fromCharCode(65 + meterageCol)}) типа ${typeof meterageValue} = ${meterageValue}`)
+        const cellInfo = cell ? ` (ячейка ${cellAddress}: v=${cell.v}, w=${cell.w}, t=${cell.t}, z=${cell.z})` : ' (ячейка не найдена)'
+        console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": значение из столбца ${meterageCol} (${String.fromCharCode(65 + meterageCol)}) типа ${typeof valueToParse} = ${JSON.stringify(valueToParse)}${cellInfo}`)
+        console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": row[${meterageCol}] = ${JSON.stringify(row[meterageCol])}, row[${meterageCol + 1}] = ${JSON.stringify(row[meterageCol + 1])}`)
         
         let numValue: number | null = null
         
-        // Если значение уже число, используем его напрямую
-        if (typeof meterageValue === 'number') {
-          if (!isNaN(meterageValue) && meterageValue > 0) {
-            numValue = meterageValue
-          }
-        } else {
-          // Если значение строка, парсим её
-          let valueStr = String(meterageValue).trim()
+        // Парсим значение в зависимости от его типа
+        // Если это строка (особенно из cell.w), парсим её для извлечения числа с запятой
+        if (typeof valueToParse === 'string') {
+          // Парсим строковое значение
+          let valueStr = String(valueToParse).trim()
           
-          // Проверяем следующую колонку (H, индекс 7) на наличие единицы измерения "м"
-          // Если в текущей ячейке только число, а в следующей "м", объединяем их
-          if (row[meterageCol + 1] && String(row[meterageCol + 1]).trim().toLowerCase() === 'м') {
+          // Проверяем следующую колонку H (индекс 7) на наличие единицы измерения "м"
+          // Если в текущей ячейке только число, а в следующей "м", используем текущее значение
+          const nextCol = meterageCol + 1
+          if (row[nextCol] && String(row[nextCol]).trim().toLowerCase() === 'м') {
             // Единица измерения в следующей колонке, используем только текущее значение
-            console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": единица измерения "м" найдена в следующей колонке`)
+            console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": единица измерения "м" найдена в следующей колонке ${nextCol} (${String.fromCharCode(65 + nextCol)})`)
           } else if (valueStr.toLowerCase().endsWith('м')) {
             // Единица измерения в той же ячейке, убираем её
             valueStr = valueStr.replace(/м\s*$/i, '').trim()
@@ -210,14 +271,16 @@ export class AmetistParser extends BaseParser {
           // Убираем знаки > и < для извлечения числа
           const cleanedStr = valueStr.replace(/^[<>≤≥]+|[<>]+$/g, '').trim()
           
-          // Сначала ищем число с десятичной частью (76,4 или 76.4)
+          // КРИТИЧНО: Сначала ищем число с десятичной частью (85,6 или 85.6)
+          // Это важно для правильного парсинга значений типа "85,6" из Excel
+          // Excel может сохранять числа с запятой как строки
           const decimalMatch = cleanedStr.match(/(\d+)[,.](\d+)/)
           if (decimalMatch) {
             const wholePart = decimalMatch[1]
             const decimalPart = decimalMatch[2]
             const extractedStr = `${wholePart}.${decimalPart}`
             numValue = parseFloat(extractedStr)
-            console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": найдено число с десятичной частью = ${numValue} (из "${valueStr}")`)
+            console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": найдено число с десятичной частью = ${numValue} (из "${valueStr}", извлечено "${extractedStr}")`)
           } else {
             // Если нет десятичной части, пробуем распарсить всю строку как число
             // Убираем пробелы, заменяем запятую на точку
@@ -231,6 +294,42 @@ export class AmetistParser extends BaseParser {
                 numValue = parseFloat(integerMatch[1])
                 console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": найдено целое число = ${numValue} (из "${valueStr}")`)
               }
+            } else {
+              console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": распарсено как число = ${numValue} (из "${valueStr}", нормализовано "${normalizedStr}")`)
+            }
+          }
+        } else if (typeof valueToParse === 'number') {
+          // Если значение уже число, проверяем, не было ли оно неправильно интерпретировано
+          // Например, "85,6" могло быть преобразовано в 100 (если запятая считалась разделителем тысяч)
+          // В этом случае проверяем cell.w для получения исходной строки
+          if (cell && cell.w && typeof cell.w === 'string') {
+            // Есть строковое представление - используем его для парсинга
+            const formattedStr = cell.w.trim()
+            console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": число ${valueToParse}, но cell.w = "${formattedStr}", парсим как строку`)
+            
+            // Парсим строку заново
+            let valueStr = formattedStr.replace(/м\s*$/i, '').trim()
+            const cleanedStr = valueStr.replace(/^[<>≤≥]+|[<>]+$/g, '').trim()
+            const decimalMatch = cleanedStr.match(/(\d+)[,.](\d+)/)
+            if (decimalMatch) {
+              const wholePart = decimalMatch[1]
+              const decimalPart = decimalMatch[2]
+              const extractedStr = `${wholePart}.${decimalPart}`
+              numValue = parseFloat(extractedStr)
+              console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": из cell.w найдено число с десятичной частью = ${numValue} (из "${formattedStr}")`)
+            } else {
+              // Если не нашли десятичную часть, используем исходное число
+              numValue = valueToParse
+              console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": используем исходное числовое значение = ${numValue}`)
+            }
+          } else if (!isNaN(valueToParse) && valueToParse > 0) {
+            // Нет строкового представления, используем число напрямую
+            numValue = valueToParse
+            const nextColValue = row[meterageCol + 1]
+            if (nextColValue && String(nextColValue).trim().toLowerCase() === 'м') {
+              console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": числовое значение = ${numValue} (единица измерения в следующей колонке)`)
+            } else {
+              console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": числовое значение = ${numValue}`)
             }
           }
         }
@@ -248,7 +347,7 @@ export class AmetistParser extends BaseParser {
           console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": метраж = ${meterage}, в наличии = ${inStock}, комментарий = ${comment || 'нет'}`)
         } else {
           // Если не удалось извлечь число, проверяем текстовые значения
-          const valueStr = String(meterageValue).trim().toLowerCase()
+          const valueStr = String(valueToParse).trim().toLowerCase()
           if (valueStr.includes('нет') || valueStr.includes('не в наличии')) {
             inStock = false
             console.log(`[AmetistParser] Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": нет в наличии (текстовое значение)`)
@@ -282,13 +381,34 @@ export class AmetistParser extends BaseParser {
       }
 
       // Логируем финальное значение для отладки
-      if (collection.toLowerCase().includes('retro') && color.toLowerCase().includes('organza')) {
-        console.log(`[AmetistParser] ФИНАЛЬНОЕ значение для RETRO organza blue: метраж = ${meterage}, в наличии = ${inStock}, комментарий = ${comment}`)
-        console.log(`[AmetistParser] Полная строка данных:`, row)
-        console.log(`[AmetistParser] Значение колонки H (7):`, row[7])
+      if (collection.toLowerCase().includes('retro') || color.toLowerCase().includes('organza') || color.toLowerCase().includes('retro')) {
+        console.log(`[AmetistParser] ===== ОТЛАДКА для "${collection}" - "${color}" (строка ${rowNumber}) =====`)
+        console.log(`[AmetistParser] ФИНАЛЬНОЕ значение перед сохранением в массив: метраж = ${meterage}, в наличии = ${inStock}, комментарий = ${comment || 'нет'}`)
+        console.log(`[AmetistParser] Полная строка данных (первые 10 колонок):`, row.slice(0, 10))
+        console.log(`[AmetistParser] Значение колонки G (6):`, row[6], `(тип: ${typeof row[6]})`)
+        console.log(`[AmetistParser] Значение колонки H (7):`, row[7], `(тип: ${typeof row[7]})`)
+        console.log(`[AmetistParser] Использованная колонка для метража: ${meterageCol} (${String.fromCharCode(65 + meterageCol)})`)
+        console.log(`[AmetistParser] Значение fabric.meterage перед push: ${fabric.meterage}`)
+        console.log(`[AmetistParser] ==========================================`)
+      }
+      
+      // Дополнительная проверка: логируем все строки с метражом около 100 или 85.6
+      if (meterage !== null && (Math.abs(meterage - 100) < 1 || Math.abs(meterage - 85.6) < 1)) {
+        console.log(`[AmetistParser] ВНИМАНИЕ: Строка ${rowNumber}, коллекция "${collection}", цвет "${color}": метраж = ${meterage} (близко к 100 или 85.6)`)
       }
 
+      // Финальная проверка перед добавлением в массив
+      if (collection.toLowerCase().includes('retro') || color.toLowerCase().includes('organza') || color.toLowerCase().includes('retro')) {
+        console.log(`[AmetistParser] ПЕРЕД PUSH: fabric.meterage = ${fabric.meterage}, fabric.inStock = ${fabric.inStock}`)
+      }
+      
       fabrics.push(fabric)
+      
+      // Проверка после добавления
+      if (collection.toLowerCase().includes('retro') || color.toLowerCase().includes('organza') || color.toLowerCase().includes('retro')) {
+        const lastFabric = fabrics[fabrics.length - 1]
+        console.log(`[AmetistParser] ПОСЛЕ PUSH: последняя ткань в массиве - meterage = ${lastFabric.meterage}, inStock = ${lastFabric.inStock}`)
+      }
     }
 
     // Удаляем временные файлы после парсинга
@@ -332,7 +452,7 @@ export class AmetistParser extends BaseParser {
 
     // Определяем заголовки
     const firstRow = sampleData[0] || []
-    const hasHeaders = firstRow.some(cell => 
+    const hasHeaders = firstRow.some((cell: any) => 
       ['коллекция', 'цвет', 'наличие', 'метраж', 'дата'].some(keyword => 
         String(cell).toLowerCase().includes(keyword)
       )

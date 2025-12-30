@@ -1,93 +1,46 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import { DEFAULT_CATEGORIES } from '@/lib/fabric-categories'
 
 export async function GET() {
   try {
+    // Прямая загрузка категорий из БД
     let categories = await prisma.fabricCategory.findMany({
       orderBy: { price: 'asc' },
     })
 
-    // Если категорий нет в БД, инициализируем значениями по умолчанию
+    // Если категорий нет, создаем из DEFAULT_CATEGORIES
     if (categories.length === 0) {
-      // Создаем категории по умолчанию
-      await prisma.fabricCategory.createMany({
-        data: DEFAULT_CATEGORIES,
-        skipDuplicates: true,
-      })
+      for (const cat of DEFAULT_CATEGORIES) {
+        try {
+          await prisma.fabricCategory.create({
+            data: {
+              category: cat.category,
+              price: cat.price,
+            },
+          })
+        } catch (error: any) {
+          // Игнорируем ошибки дублирования
+          if (!error.message?.includes('Unique constraint')) {
+            console.error('[GET /api/categories] Error creating category:', error)
+          }
+        }
+      }
       categories = await prisma.fabricCategory.findMany({
         orderBy: { price: 'asc' },
       })
     }
 
     return NextResponse.json(categories)
-  } catch (error) {
-    console.error('Error fetching categories:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch categories' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const body = await request.json()
-    const { category, price } = body
-
-    if (!category || !price) {
-      return NextResponse.json(
-        { error: 'Category and price are required' },
-        { status: 400 }
-      )
-    }
-
-    const result = await prisma.fabricCategory.upsert({
-      where: { category },
-      create: {
-        category,
-        price,
-      },
-      update: {
-        price,
-      },
-    })
-
-    return NextResponse.json(result)
   } catch (error: any) {
-    console.error('Error saving category:', error)
+    console.error('[GET /api/categories] Error:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to save category' },
+      { error: error.message || 'Failed to fetch categories' },
       { status: 500 }
     )
   }
 }
 
-export async function DELETE(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-
-    if (!id) {
-      return NextResponse.json(
-        { error: 'Category ID is required' },
-        { status: 400 }
-      )
-    }
-
-    await prisma.fabricCategory.delete({
-      where: { id },
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (error: any) {
-    console.error('Error deleting category:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to delete category' },
-      { status: 500 }
-    )
-  }
-}
 
 
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import { getCategoryByPrice, calculatePricePerMeter, DEFAULT_CATEGORIES } from '@/lib/fabric-categories'
 import { normalizePrice } from '@/lib/price-normalization'
 
@@ -11,7 +11,7 @@ export async function PATCH(
     const fabricId = params.id
     const body = await request.json()
     
-    const { price, fabricType, description } = body
+    const { price, fabricType, description, category, inStock, pricePerMeter } = body
 
     // Получаем текущую ткань
     const existingFabric = await prisma.fabric.findUnique({

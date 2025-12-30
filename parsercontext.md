@@ -529,3 +529,4 @@ regenerate-prisma.bat
 3. Документацию в папке `docs/`
 
 
+

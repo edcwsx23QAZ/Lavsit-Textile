@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer'
+﻿import puppeteer from 'puppeteer'
 import axios from 'axios'
 import * as XLSX from 'xlsx'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
@@ -313,7 +313,7 @@ export class TextileNovaParser extends BaseParser {
 
       // Определяем заголовки
       const firstRow = sampleData[0] || []
-      const hasHeaders = firstRow.some(cell => 
+      const hasHeaders = firstRow.some((cell: any) => 
         ['коллекция', 'цвет', 'наличие', 'остатки', 'дата'].some(keyword => 
           String(cell).toLowerCase().includes(keyword)
         )

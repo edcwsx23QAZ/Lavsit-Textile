@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import { ArtvisionParser } from '@/lib/parsers/artvision-parser'
 import { SouzmParser } from '@/lib/parsers/souzm-parser'
 import { DomiartParser } from '@/lib/parsers/domiart-parser'
@@ -34,15 +34,37 @@ export async function POST(
         )
       }
 
-      const emailConfig = JSON.parse(supplier.emailConfig)
+      let emailConfig = JSON.parse(supplier.emailConfig)
+      
+      // Нормализуем структуру emailConfig (конвертируем из вложенной в плоскую, если нужно)
+      if (emailConfig.imap && (emailConfig.imap.host || emailConfig.imap.port || emailConfig.imap.user)) {
+        // Вложенная структура - конвертируем в плоскую для EmailParser
+        emailConfig = {
+          host: emailConfig.imap.host || '',
+          port: emailConfig.imap.port || 993,
+          user: emailConfig.imap.user || '',
+          password: emailConfig.imap.password || '',
+          secure: emailConfig.imap.secure !== false,
+          fromEmail: emailConfig.fromEmail || '',
+          subjectFilter: emailConfig.subjectFilter || '',
+          searchDays: emailConfig.searchDays || 90,
+          searchUnreadOnly: emailConfig.searchUnreadOnly !== undefined ? emailConfig.searchUnreadOnly : false,
+          useAnyLatestAttachment: emailConfig.useAnyLatestAttachment === true,
+        }
+      }
+      
       const emailParser = new EmailParser(emailConfig)
       
-      // Get unprocessed attachments
-      const unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id)
+      // Get attachments - use any latest if configured, otherwise only unprocessed
+      const useAnyLatest = emailConfig.useAnyLatestAttachment === true
+      const unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id, useAnyLatest)
       
       if (unprocessedFiles.length === 0) {
+        const message = useAnyLatest 
+          ? 'No email attachments found. Please check emails first using /parse-email endpoint.'
+          : 'No unprocessed email attachments found. Please check emails first using /parse-email endpoint or enable "Use any latest attachment" in settings.'
         return NextResponse.json(
-          { error: 'No unprocessed email attachments found. Please check emails first using /parse-email endpoint.' },
+          { error: message },
           { status: 400 }
         )
       }

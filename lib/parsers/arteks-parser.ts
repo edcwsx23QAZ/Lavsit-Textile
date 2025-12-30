@@ -1,4 +1,4 @@
-import axios from 'axios'
+﻿import axios from 'axios'
 import ExcelJS from 'exceljs'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
 
@@ -144,7 +144,7 @@ export class ArteksParser extends BaseParser {
 
     // Определяем заголовки
     const firstRow = sampleData[0] || []
-    const hasHeaders = firstRow.some(cell => 
+    const hasHeaders = firstRow.some((cell: any) => 
       ['коллекция', 'цвет', 'наличие', 'дата'].some(keyword => 
         String(cell).toLowerCase().includes(keyword)
       )

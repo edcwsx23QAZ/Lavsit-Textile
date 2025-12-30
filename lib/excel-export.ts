@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import { formatDate } from './utils'
 
 /**
@@ -139,5 +139,69 @@ export async function exportSupplierFabricsToExcel(supplierId: string): Promise<
   return Buffer.from(buffer)
 }
 
+/**
+ * Экспортирует список тканей в Excel файл (для экспорта отфильтрованных тканей)
+ */
+export async function exportFabricsListToExcel(fabrics: Array<{
+  supplier: { name: string }
+  collection: string
+  colorNumber: string
+  fabricType: string | null
+  description: string | null
+  meterage: number | null
+  price: number | null
+  pricePerMeter: number | null
+  category: number | null
+  inStock: boolean | null
+}>): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('Ткани')
 
+  // Заголовки (в том же порядке, что и на странице)
+  worksheet.columns = [
+    { header: 'Поставщик', key: 'supplier', width: 20 },
+    { header: 'Коллекция', key: 'collection', width: 25 },
+    { header: 'Цвет', key: 'colorNumber', width: 15 },
+    { header: 'Тип ткани', key: 'fabricType', width: 20 },
+    { header: 'Описание', key: 'description', width: 40 },
+    { header: 'Метраж', key: 'meterage', width: 12 },
+    { header: 'Цена', key: 'price', width: 15 },
+    { header: 'Цена/м', key: 'pricePerMeter', width: 15 },
+    { header: 'Категория', key: 'category', width: 12 },
+    { header: 'В наличии', key: 'inStock', width: 12 },
+  ]
 
+  // Стили для заголовков
+  worksheet.getRow(1).font = { bold: true }
+  worksheet.getRow(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFE0E0E0' },
+  }
+
+  // Данные
+  fabrics.forEach((fabric) => {
+    worksheet.addRow({
+      supplier: fabric.supplier.name,
+      collection: fabric.collection,
+      colorNumber: fabric.colorNumber,
+      fabricType: fabric.fabricType || '-',
+      description: fabric.description || '-',
+      meterage: fabric.meterage !== null ? fabric.meterage : '-',
+      price: fabric.price !== null ? fabric.price : '-',
+      pricePerMeter: fabric.pricePerMeter !== null ? fabric.pricePerMeter : '-',
+      category: fabric.category !== null ? `Кат. ${fabric.category}` : '-',
+      inStock: fabric.inStock === null ? '-' : fabric.inStock ? 'Да' : 'Нет',
+    })
+  })
+
+  // Автоматическая ширина колонок
+  worksheet.columns.forEach((column) => {
+    if (column.header) {
+      column.width = Math.max(column.width || 10, column.header.length + 2)
+    }
+  })
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  return Buffer.from(buffer)
+}

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { exportSupplierFabricsToExcel } from '@/lib/excel-export'
 import { getLastParsedDataFile } from '@/lib/parsers/save-parsed-data'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import * as fs from 'fs'
 
 export async function GET(
@@ -31,7 +31,7 @@ export async function GET(
       // Возвращаем сохраненный файл
       const buffer = fs.readFileSync(savedFile)
       
-      return new NextResponse(buffer, {
+      return new NextResponse(buffer as any, {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'Content-Disposition': `attachment; filename="${fileName}"`,
@@ -42,7 +42,7 @@ export async function GET(
     // Если сохраненного файла нет, экспортируем из базы данных
     const buffer = await exportSupplierFabricsToExcel(params.id)
     
-    return new NextResponse(buffer, {
+    return new NextResponse(buffer as any, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${fileName}"`,

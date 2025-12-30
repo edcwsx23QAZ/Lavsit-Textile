@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 
 // GET - получить все исключения
 export async function GET() {
   try {
+    console.log('[GET /api/exclusions] Загрузка исключений...')
     let excludedFabrics: any[]
     
     // Пробуем сначала через Prisma ORM
@@ -91,9 +92,25 @@ export async function GET() {
 
     return NextResponse.json({ exclusions: grouped })
   } catch (error: any) {
-    console.error('Error fetching exclusions:', error)
+    console.error('[GET /api/exclusions] Error fetching exclusions:', error)
+    console.error('[GET /api/exclusions] Error name:', error?.name)
+    console.error('[GET /api/exclusions] Error message:', error?.message)
+    console.error('[GET /api/exclusions] Error stack:', error?.stack)
+    
+    const errorMessage = error?.message || 'Unknown error'
+    let errorDetails = errorMessage
+    
+    if (errorMessage.includes('SQLITE_BUSY') || errorMessage.includes('database is locked')) {
+      errorDetails = 'База данных заблокирована. Попробуйте еще раз.'
+    } else if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+      errorDetails = 'Превышено время ожидания ответа от базы данных.'
+    }
+    
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch exclusions' },
+      { 
+        error: 'Failed to fetch exclusions',
+        details: errorDetails
+      },
       { status: 500 }
     )
   }
@@ -163,6 +180,7 @@ export async function POST(request: NextRequest) {
       }
       
       const result = { count: updatedCount }
+      
       return NextResponse.json({ 
         message: `Excluded collection "${collection}" (${result.count} fabrics)`,
         count: result.count 
@@ -228,6 +246,7 @@ export async function POST(request: NextRequest) {
       }
       
       const result = { count: updatedCount }
+      
       return NextResponse.json({ 
         message: `Excluded color "${colorNumber}" from collection "${collection}"`,
         count: result.count 
@@ -305,4 +324,9 @@ export async function PATCH(request: NextRequest) {
     )
   }
 }
+
+
+
+
+
 

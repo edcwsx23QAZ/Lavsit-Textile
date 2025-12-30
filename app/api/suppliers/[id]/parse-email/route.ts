@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import { EmailParser, EmailConfig } from '@/lib/email/email-parser'
 import { EmailExcelParser } from '@/lib/parsers/email-excel-parser'
 import { saveParsedDataToExcel } from '@/lib/parsers/save-parsed-data'
@@ -54,7 +54,24 @@ export async function POST(
     }
 
     // Parse email configuration
-    const emailConfig: EmailConfig = JSON.parse(supplier.emailConfig)
+    let emailConfig: any = JSON.parse(supplier.emailConfig)
+    
+    // Нормализуем структуру emailConfig (конвертируем из вложенной в плоскую, если нужно)
+    if (emailConfig.imap && (emailConfig.imap.host || emailConfig.imap.port || emailConfig.imap.user)) {
+      // Вложенная структура - конвертируем в плоскую для EmailParser
+      emailConfig = {
+        host: emailConfig.imap.host || '',
+        port: emailConfig.imap.port || 993,
+        user: emailConfig.imap.user || '',
+        password: emailConfig.imap.password || '',
+        secure: emailConfig.imap.secure !== false,
+        fromEmail: emailConfig.fromEmail || '',
+        subjectFilter: emailConfig.subjectFilter || '',
+        searchDays: emailConfig.searchDays || 90,
+        searchUnreadOnly: emailConfig.searchUnreadOnly !== undefined ? emailConfig.searchUnreadOnly : false,
+        useAnyLatestAttachment: emailConfig.useAnyLatestAttachment === true,
+      }
+    }
 
     console.log(`[parse-email] Checking emails for supplier: ${supplier.name}`)
 
@@ -75,15 +92,22 @@ export async function POST(
       const emails = await emailParser.fetchNewEmails(supplier.id, since)
       console.log(`[parse-email] Found ${emails.length} email(s) matching criteria`)
       
-      // Логируем детали найденных писем
-      if (emails.length > 0) {
-        console.log(`[parse-email] Email details:`)
-        emails.forEach((email, idx) => {
+      // Сортируем письма по дате (от новых к старым) для корректного выбора последнего
+      const sortedEmails = [...emails].sort((a, b) => {
+        const dateA = a.date || new Date(0)
+        const dateB = b.date || new Date(0)
+        return dateB.getTime() - dateA.getTime() // Сортировка по убыванию (последнее письмо первым)
+      })
+      
+      // Логируем детали найденных писем (уже отсортированные)
+      if (sortedEmails.length > 0) {
+        console.log(`[parse-email] Email details (sorted by date, newest first):`)
+        sortedEmails.forEach((email, idx) => {
           console.log(`  ${idx + 1}. From: ${email.from?.text || 'unknown'}, Subject: ${email.subject || 'no subject'}, Date: ${email.date?.toISOString() || 'no date'}`)
         })
       }
 
-      if (emails.length === 0) {
+      if (sortedEmails.length === 0) {
         // Provide helpful message about why no emails were found
         const reasons: string[] = []
         if (emailConfig.searchUnreadOnly !== false) {
@@ -101,14 +125,15 @@ export async function POST(
       }
 
       // Find email with the latest date that has valid Excel attachments
+      // Используем отсортированный список, чтобы гарантированно обработать последнее письмо первым
       let latestEmail: ParsedMail | null = null
       let latestDate: Date | null = null
       let validEmails: Array<{ email: ParsedMail; date: Date; attachment: any }> = []
 
-      console.log(`[parse-email] Checking ${emails.length} emails for valid Excel attachments...`)
+      console.log(`[parse-email] Checking ${sortedEmails.length} emails for valid Excel attachments (sorted by date, newest first)...`)
 
       let totalAttachments = 0
-      for (const email of emails) {
+      for (const email of sortedEmails) {
         const attachments = emailParser.extractExcelAttachments(email)
         totalAttachments += attachments.length
         
@@ -217,9 +242,9 @@ export async function POST(
 
       if (!latestEmail) {
         console.log(`[parse-email] No emails with valid Excel attachments found`)
-        console.log(`[parse-email] Summary: ${emails.length} emails checked, ${totalAttachments} Excel attachments found, ${validEmails.length} valid attachments`)
+        console.log(`[parse-email] Summary: ${sortedEmails.length} emails checked, ${totalAttachments} Excel attachments found, ${validEmails.length} valid attachments`)
         
-        let message = `Найдено ${emails.length} писем`
+        let message = `Найдено ${sortedEmails.length} писем`
         if (totalAttachments > 0) {
           message += `, ${totalAttachments} Excel вложений найдено, но ни одно не содержит валидных данных`
         } else {
@@ -378,7 +403,7 @@ export async function POST(
             prisma.fabric.deleteMany({
               where: { supplierId: supplier.id },
             }),
-            ...fabrics.map((fabric) =>
+            ...fabrics.map((fabric: any) =>
               prisma.fabric.create({
                 data: {
                   ...fabric,
@@ -419,12 +444,12 @@ export async function POST(
 
       const response: any = {
         success: true,
-        emailsChecked: emails.length,
+        emailsChecked: sortedEmails.length,
         attachmentsProcessed: processedAttachments,
         fabricsCount: totalFabrics,
       }
 
-      if (emails.length === 0) {
+      if (sortedEmails.length === 0) {
         response.message = 'Письма не найдены. Проверьте фильтры и убедитесь, что письма непрочитаны (если включен поиск только непрочитанных).'
         response.searchCriteria = {
           unreadOnly: emailConfig.searchUnreadOnly !== false,

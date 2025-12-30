@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as XLSX from 'xlsx'
@@ -315,8 +315,8 @@ async function handlePriceUpload(
       const fabric = await prisma.fabric.findFirst({
         where: {
           supplierId,
-          collection: { contains: collection, mode: 'insensitive' },
-          colorNumber: { contains: colorNumber, mode: 'insensitive' },
+          collection: { contains: collection },
+          colorNumber: { contains: colorNumber },
         },
       })
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 
 export async function POST(
   request: Request,
@@ -30,6 +30,7 @@ export async function POST(
     )
   }
 }
+
 
 
 

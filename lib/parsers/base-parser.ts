@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 
 export interface ParsedFabric {
   collection: string
@@ -54,7 +54,7 @@ export abstract class BaseParser {
   abstract parse(url: string): Promise<ParsedFabric[]>
   abstract analyze(url: string): Promise<ParsingAnalysis>
   
-  protected async saveRules(rules: ParsingRules): Promise<void> {
+  public async saveRules(rules: ParsingRules): Promise<void> {
     await prisma.parsingRule.upsert({
       where: { supplierId: this.supplierId },
       create: {
@@ -68,7 +68,7 @@ export abstract class BaseParser {
     })
   }
 
-  protected async loadRules(): Promise<ParsingRules | null> {
+  public async loadRules(): Promise<ParsingRules | null> {
     const rule = await prisma.parsingRule.findUnique({
       where: { supplierId: this.supplierId },
     })

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import { getCategoryByPrice, calculatePricePerMeter, DEFAULT_CATEGORIES } from '@/lib/fabric-categories'
 import { normalizePrice } from '@/lib/price-normalization'
 
@@ -114,4 +114,9 @@ export async function PATCH(request: Request) {
     )
   }
 }
+
+
+
+
+
 

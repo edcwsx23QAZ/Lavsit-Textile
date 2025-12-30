@@ -1,8 +1,10 @@
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import { EmailParser, EmailConfig } from '@/lib/email/email-parser'
 import { EmailExcelParser } from '@/lib/parsers/email-excel-parser'
 import { saveParsedDataToExcel } from '@/lib/parsers/save-parsed-data'
 import { ParsedMail } from 'mailparser'
+import * as path from 'path'
+import * as fs from 'fs'
 
 /**
  * Проверяет email для всех поставщиков с типом "email"
@@ -154,7 +156,7 @@ export async function checkSupplierEmails(): Promise<void> {
             let filePath: string
             if (fs.existsSync(attachmentsDir)) {
               const files = fs.readdirSync(attachmentsDir)
-              const tempFile = files.find((f) => f.includes(validAttachment.filename.replace(/[^a-zA-Z0-9.-]/g, '_')))
+              const tempFile = files.find((f: string) => f.includes(validAttachment.filename.replace(/[^a-zA-Z0-9.-]/g, '_')))
               
               if (tempFile) {
                 filePath = path.join(attachmentsDir, tempFile)
@@ -199,9 +201,7 @@ export async function checkSupplierEmails(): Promise<void> {
 
             console.log(`[EmailChecker] Processing valid Excel file: ${validAttachment.filename}`)
 
-            try {
-
-                  // Find the saved attachment record
+            // Find the saved attachment record
                   const attachmentRecord = await prisma.emailAttachment.findFirst({
                     where: {
                       supplierId: supplier.id,
@@ -285,20 +285,13 @@ export async function checkSupplierEmails(): Promise<void> {
                   // Mark attachment as processed
                   await emailParser.markAsProcessed(attachmentRecord.id)
 
-                  console.log(
-                    `[EmailChecker] Processed ${fabrics.length} fabrics from ${attachment.filename} for ${supplier.name}`
-                  )
-                } catch (attachmentError: any) {
-                  console.error(
-                    `[EmailChecker] Error processing attachment for ${supplier.name}:`,
-                    attachmentError
-                  )
-                }
-              }
-          } catch (emailError: any) {
+            console.log(
+              `[EmailChecker] Processed ${fabrics.length} fabrics from ${validAttachment.filename} for ${supplier.name}`
+            )
+          } catch (attachmentError: any) {
             console.error(
-              `[EmailChecker] Error processing email for ${supplier.name}:`,
-              emailError
+              `[EmailChecker] Error processing attachment for ${supplier.name}:`,
+              attachmentError
             )
           }
 

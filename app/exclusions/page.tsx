@@ -10,25 +10,26 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 
 interface ExclusionGroup {
-  [supplierKey: string]: {
-    [collection: string]: Array<{
-      id: string
-      colorNumber: string
-      excludedFromParsing: boolean
-    }>
-  }
+  [collection: string]: Array<{
+    id: string
+    colorNumber: string
+    excludedFromParsing: boolean
+  }>
 }
 
-interface ExclusionState {
-  [fabricId: string]: boolean
+interface Exclusions {
+  [supplierKey: string]: ExclusionGroup
 }
 
 export default function ExclusionsPage() {
-  const router = useRouter()
-  const [exclusions, setExclusions] = useState<ExclusionGroup>({})
+  const [exclusions, setExclusions] = useState<Exclusions>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [exclusionState, setExclusionState] = useState<ExclusionState>({})
+  const router = useRouter()
+
+  useEffect(() => {
+    fetchExclusions()
+  }, [])
 
   const fetchExclusions = async () => {
     try {
@@ -37,17 +38,6 @@ export default function ExclusionsPage() {
       if (!response.ok) throw new Error('Failed to fetch exclusions')
       const data = await response.json()
       setExclusions(data.exclusions || {})
-      
-      // Инициализируем состояние чекбоксов
-      const state: ExclusionState = {}
-      Object.values(data.exclusions || {}).forEach((collections: any) => {
-        Object.values(collections).forEach((colors: any) => {
-          colors.forEach((color: any) => {
-            state[color.id] = color.excludedFromParsing
-          })
-        })
-      })
-      setExclusionState(state)
     } catch (error: any) {
       toast.error('Ошибка загрузки: ' + error.message)
     } finally {
@@ -55,14 +45,15 @@ export default function ExclusionsPage() {
     }
   }
 
-  useEffect(() => {
-    fetchExclusions()
-  }, [])
-
-  const handleCheckboxChange = (fabricId: string, checked: boolean) => {
-    setExclusionState(prev => ({
+  const handleToggle = (supplierKey: string, collection: string, fabricId: string, currentValue: boolean) => {
+    setExclusions(prev => ({
       ...prev,
-      [fabricId]: checked,
+      [supplierKey]: {
+        ...prev[supplierKey],
+        [collection]: prev[supplierKey][collection].map(f =>
+          f.id === fabricId ? { ...f, excludedFromParsing: !currentValue } : f
+        ),
+      },
     }))
   }
 
@@ -70,43 +61,46 @@ export default function ExclusionsPage() {
     try {
       setSaving(true)
       
-      // Находим все ткани, у которых снят чекбокс (нужно отменить исключение)
-      const toInclude: string[] = []
-      
-      // Проходим по всем исключениям и находим те, у которых чекбокс снят
-      Object.values(exclusions).forEach((collections: any) => {
-        Object.values(collections).forEach((colors: any) => {
-          colors.forEach((color: any) => {
-            const currentState = exclusionState[color.id] ?? true // По умолчанию все исключены
-            // Если чекбокс снят (false), значит нужно отменить исключение
-            if (!currentState) {
-              toInclude.push(color.id)
-            }
+      // Собираем все измененные ткани
+      const fabricIds: string[] = []
+      const excludedValues: boolean[] = []
+
+      Object.values(exclusions).forEach(supplierExclusions => {
+        Object.values(supplierExclusions).forEach(colors => {
+          colors.forEach(fabric => {
+            fabricIds.push(fabric.id)
+            excludedValues.push(fabric.excludedFromParsing)
           })
         })
       })
 
-      // Отменяем исключения для тканей с снятыми чекбоксами
-      if (toInclude.length > 0) {
-        const response = await fetch('/api/exclusions', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fabricIds: toInclude,
-            excludedFromParsing: false,
-          }),
-        })
-        if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.error || 'Failed to include')
-        }
-      } else {
-        toast.info('Нет изменений для сохранения')
+      if (fabricIds.length === 0) {
+        toast.info('Нет данных для сохранения')
         return
       }
 
-      toast.success(`Исключение отменено для ${toInclude.length} ${toInclude.length === 1 ? 'ткани' : 'тканей'}`)
-      fetchExclusions()
+      // Группируем по значению excludedFromParsing для оптимизации
+      const toExclude = fabricIds.filter((_, i) => excludedValues[i])
+      const toInclude = fabricIds.filter((_, i) => !excludedValues[i])
+
+      if (toExclude.length > 0) {
+        await fetch('/api/exclusions', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fabricIds: toExclude, excludedFromParsing: true }),
+        })
+      }
+
+      if (toInclude.length > 0) {
+        await fetch('/api/exclusions', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fabricIds: toInclude, excludedFromParsing: false }),
+        })
+      }
+
+      toast.success('Исключения сохранены')
+      router.refresh()
     } catch (error: any) {
       toast.error('Ошибка сохранения: ' + error.message)
     } finally {
@@ -114,130 +108,87 @@ export default function ExclusionsPage() {
     }
   }
 
-  const hasChanges = () => {
-    // Проверяем, есть ли ткани с снятыми чекбоксами (которые нужно включить обратно)
-    let hasChanges = false
-    Object.values(exclusions).forEach((collections: any) => {
-      Object.values(collections).forEach((colors: any) => {
-        colors.forEach((color: any) => {
-          const currentState = exclusionState[color.id] ?? true // По умолчанию все исключены
-          // Если чекбокс снят (false), значит есть изменения
-          if (!currentState) {
-            hasChanges = true
-          }
-        })
-      })
-    })
-    return hasChanges
-  }
-
   if (loading) {
     return (
-      <div className="container mx-auto py-8">
-        <Card>
-          <CardContent className="py-8">
-            <div className="text-center">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-              <p>Загрузка исключений...</p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
       </div>
     )
   }
 
-  const supplierKeys = Object.keys(exclusions).sort()
-
   return (
-    <div className="container mx-auto py-8">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Исключения парсинга</CardTitle>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => router.push('/suppliers')}
-              >
-                Назад к поставщикам
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={saving || !hasChanges()}
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Сохранение...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Сохранить
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {supplierKeys.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              Исключения не найдены
-            </div>
+    <div className="container mx-auto p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Исключения из парсинга</h1>
+          <p className="text-muted-foreground">
+            Управление тканями, которые исключены из автоматического парсинга
+          </p>
+        </div>
+        <Button onClick={handleSave} disabled={saving}>
+          {saving ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Сохранение...
+            </>
           ) : (
             <>
-              <div className="mb-4 p-3 bg-muted rounded-lg text-sm text-muted-foreground">
-                Все ткани в списке уже исключены из парсинга. Снимите чекбокс у тех тканей, для которых нужно отменить исключение, и нажмите "Сохранить".
-              </div>
-            <div className="space-y-6">
-              {supplierKeys.map((supplierKey) => {
-                const [supplierId, supplierName] = supplierKey.split('|')
-                const collections = exclusions[supplierKey]
-                const collectionKeys = Object.keys(collections).sort()
-
-                return (
-                  <div key={supplierKey} className="border rounded-lg p-4">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                      <Badge variant="outline">{supplierName}</Badge>
-                    </h3>
-                    <div className="space-y-4 ml-4">
-                      {collectionKeys.map((collection) => {
-                        const colors = collections[collection]
-                        return (
-                          <div key={collection} className="border-l-2 pl-4">
-                            <h4 className="font-medium mb-2 flex items-center gap-2">
-                              <Badge variant="secondary">{collection}</Badge>
-                            </h4>
-                            <div className="space-y-2 ml-4">
-                              {colors.map((color) => (
-                                <div
-                                  key={color.id}
-                                  className="flex items-center gap-2 py-1"
-                                >
-                                  <Checkbox
-                                    checked={exclusionState[color.id] ?? color.excludedFromParsing}
-                                    onCheckedChange={(checked) =>
-                                      handleCheckboxChange(color.id, checked as boolean)
-                                    }
-                                  />
-                                  <span className="text-sm">{color.colorNumber}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+              <Save className="mr-2 h-4 w-4" />
+              Сохранить изменения
             </>
           )}
-        </CardContent>
-      </Card>
+        </Button>
+      </div>
+
+      <div className="space-y-6">
+        {Object.entries(exclusions).map(([supplierKey, collections]) => {
+          const [supplierId, supplierName] = supplierKey.split('|')
+          
+          return (
+            <Card key={supplierKey}>
+              <CardHeader>
+                <CardTitle>{supplierName}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {Object.entries(collections).map(([collection, colors]) => (
+                    <div key={collection} className="border rounded-lg p-4">
+                      <h3 className="font-semibold mb-2">{collection}</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                        {colors.map(fabric => (
+                          <div key={fabric.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={fabric.id}
+                              checked={fabric.excludedFromParsing}
+                              onCheckedChange={() =>
+                                handleToggle(supplierKey, collection, fabric.id, fabric.excludedFromParsing)
+                              }
+                            />
+                            <label
+                              htmlFor={fabric.id}
+                              className="text-sm cursor-pointer flex-1"
+                            >
+                              {fabric.colorNumber}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+
+        {Object.keys(exclusions).length === 0 && (
+          <div className="text-center py-12 text-muted-foreground">
+            Исключения не найдены
+          </div>
+        )}
+      </div>
     </div>
   )
 }
-

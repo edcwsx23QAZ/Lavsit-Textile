@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import * as fs from 'fs'
 import * as path from 'path'
 import { writeFile } from 'fs/promises'
@@ -75,4 +75,9 @@ export async function POST(request: Request) {
     )
   }
 }
+
+
+
+
+
 

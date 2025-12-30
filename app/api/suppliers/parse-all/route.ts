@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 import { ArtvisionParser } from '@/lib/parsers/artvision-parser'
 import { SouzmParser } from '@/lib/parsers/souzm-parser'
 import { DomiartParser } from '@/lib/parsers/domiart-parser'
@@ -24,14 +24,35 @@ async function parseSupplier(supplier: { id: string; name: string; parsingMethod
         throw new Error('Email configuration not found')
       }
 
-      const emailConfig = JSON.parse(supplier.emailConfig)
+      let emailConfig = JSON.parse(supplier.emailConfig)
+      
+      // Нормализуем структуру emailConfig (конвертируем из вложенной в плоскую, если нужно)
+      if (emailConfig.imap && (emailConfig.imap.host || emailConfig.imap.port || emailConfig.imap.user)) {
+        // Вложенная структура - конвертируем в плоскую для EmailParser
+        emailConfig = {
+          host: emailConfig.imap.host || '',
+          port: emailConfig.imap.port || 993,
+          user: emailConfig.imap.user || '',
+          password: emailConfig.imap.password || '',
+          secure: emailConfig.imap.secure !== false,
+          fromEmail: emailConfig.fromEmail || '',
+          subjectFilter: emailConfig.subjectFilter || '',
+          searchDays: emailConfig.searchDays || 90,
+          searchUnreadOnly: emailConfig.searchUnreadOnly !== undefined ? emailConfig.searchUnreadOnly : false,
+          useAnyLatestAttachment: emailConfig.useAnyLatestAttachment === true,
+        }
+      }
+      
       const emailParser = new EmailParser(emailConfig)
       
-      // Get unprocessed attachments
-      const unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id)
+      // Get attachments - use any latest if configured, otherwise only unprocessed
+      const useAnyLatest = emailConfig.useAnyLatestAttachment === true
+      const unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id, useAnyLatest)
       
       if (unprocessedFiles.length === 0) {
-        throw new Error('No unprocessed email attachments found')
+        throw new Error(useAnyLatest 
+          ? 'No email attachments found'
+          : 'No unprocessed email attachments found')
       }
 
       // Use the most recent file
@@ -133,7 +154,7 @@ async function parseSupplier(supplier: { id: string; name: string; parsingMethod
     
     console.log(`[parse-all] Парсер вернул ${fabrics.length} тканей для ${supplier.name}`)
     if (fabrics.length > 0) {
-      console.log(`[parse-all] Примеры тканей:`, fabrics.slice(0, 3).map(f => `${f.collection} ${f.colorNumber} (${f.inStock ? 'в наличии' : 'не в наличии'})`))
+      console.log(`[parse-all] Примеры тканей:`, fabrics.slice(0, 3).map((f: any) => `${f.collection} ${f.colorNumber} (${f.inStock ? 'в наличии' : 'не в наличии'})`))
     }
 
     // Сохраняем распарсенные данные в Excel файл
@@ -159,6 +180,7 @@ async function parseSupplier(supplier: { id: string; name: string; parsingMethod
       where: { id: supplier.id },
       data: {
         fabricsCount,
+        // lastParsedCount: fabrics.length, // Временно отключено до перегенерации Prisma Client
         lastUpdatedAt: new Date(),
         status: 'active',
         errorMessage: null,
@@ -203,10 +225,10 @@ export async function POST() {
     const detailedResults = results.map((r, index) => {
       if (r.status === 'fulfilled') {
         return {
+          ...r.value,
           supplierId: suppliers[index].id,
           supplierName: suppliers[index].name,
           success: true,
-          ...r.value,
         }
       } else {
         const reason = r.reason
@@ -245,4 +267,9 @@ export async function POST() {
     )
   }
 }
+
+
+
+
+
 

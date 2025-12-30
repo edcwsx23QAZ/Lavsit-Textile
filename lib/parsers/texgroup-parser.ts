@@ -1,4 +1,4 @@
-import axios from 'axios'
+﻿import axios from 'axios'
 import * as XLSX from 'xlsx'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
 
@@ -137,7 +137,7 @@ export class TexGroupParser extends BaseParser {
 
     // Определяем заголовки
     const firstRow = sampleData[0] || []
-    const hasHeaders = firstRow.some(cell => 
+    const hasHeaders = firstRow.some((cell: any) => 
       ['коллекция', 'цвет', 'наличие', 'дата', 'комментарий'].some(keyword => 
         String(cell).toLowerCase().includes(keyword)
       )
@@ -191,5 +191,6 @@ export class TexGroupParser extends BaseParser {
     }
   }
 }
+
 
 

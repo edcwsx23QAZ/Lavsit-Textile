@@ -143,3 +143,4 @@ git push origin main
 
 См. `docs/PERFORMANCE_ANALYSIS.md` для детальных рекомендаций.
 
+

@@ -1,29 +1,43 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db/prisma'
 
 export async function GET() {
   try {
-    // Убеждаемся, что Viptextil существует в базе
-    const viptextilExists = await prisma.supplier.findUnique({
-      where: { name: 'Viptextil' },
-    })
-    
-    if (!viptextilExists) {
-      console.log('[GET /api/suppliers] Viptextil not found, creating...')
-      await prisma.supplier.create({
-        data: {
-          name: 'Viptextil',
-          websiteUrl: 'http://tgn1.viptextil.ru',
-          parsingMethod: 'html',
-          parsingUrl: 'http://tgn1.viptextil.ru/vip/ostatki.html',
-          status: 'active',
-        },
+    // Убеждаемся, что Viptextil существует
+    try {
+      const viptextilExists = await prisma.supplier.findUnique({
+        where: { name: 'Viptextil' },
+        select: { id: true },
       })
-      console.log('[GET /api/suppliers] Viptextil created')
+
+      if (!viptextilExists) {
+        await prisma.supplier.create({
+          data: {
+            name: 'Viptextil',
+            websiteUrl: 'http://tgn1.viptextil.ru',
+            parsingMethod: 'html',
+            parsingUrl: 'http://tgn1.viptextil.ru/vip/ostatki.html',
+            status: 'active',
+          },
+        })
+      }
+    } catch (error: any) {
+      // Игнорируем ошибки при проверке/создании Viptextil
+      console.warn('[GET /api/suppliers] Error checking Viptextil:', error.message)
     }
-    
+
+    // Прямая загрузка поставщиков из БД
     const suppliers = await prisma.supplier.findMany({
-      include: {
+      select: {
+        id: true,
+        name: true,
+        websiteUrl: true,
+        parsingMethod: true,
+        parsingUrl: true,
+        emailConfig: true,
+        lastUpdatedAt: true,
+        status: true,
+        errorMessage: true,
         _count: {
           select: { fabrics: true },
         },
@@ -34,42 +48,29 @@ export async function GET() {
     })
 
     const suppliersWithCount = suppliers.map(supplier => ({
-      ...supplier,
+      id: supplier.id,
+      name: supplier.name,
+      websiteUrl: supplier.websiteUrl,
+      parsingMethod: supplier.parsingMethod,
+      parsingUrl: supplier.parsingUrl,
+      emailConfig: supplier.emailConfig,
+      lastUpdatedAt: supplier.lastUpdatedAt,
+      status: supplier.status,
+      errorMessage: supplier.errorMessage,
       fabricsCount: supplier._count.fabrics,
     }))
 
     return NextResponse.json(suppliersWithCount)
-  } catch (error) {
-    console.error('Error fetching suppliers:', error)
+  } catch (error: any) {
+    console.error('[GET /api/suppliers] Error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch suppliers' },
+      { error: error.message || 'Failed to fetch suppliers' },
       { status: 500 }
     )
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json()
-    const { name, websiteUrl, parsingMethod, parsingUrl } = body
 
-    const supplier = await prisma.supplier.create({
-      data: {
-        name,
-        websiteUrl,
-        parsingMethod,
-        parsingUrl,
-      },
-    })
 
-    return NextResponse.json(supplier)
-  } catch (error) {
-    console.error('Error creating supplier:', error)
-    return NextResponse.json(
-      { error: 'Failed to create supplier' },
-      { status: 500 }
-    )
-  }
-}
 
 

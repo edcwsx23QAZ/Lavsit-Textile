@@ -1,4 +1,4 @@
-import axios from 'axios'
+﻿import axios from 'axios'
 import * as XLSX from 'xlsx'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
 import { validateDate } from '@/lib/date-validation'
@@ -62,8 +62,8 @@ export class EgidaParser extends BaseParser {
 
   /**
    * Парсит коллекцию и цвет из столбца B по правилам Эгида
-   * Коллекция - текст до цифр
-   * Цвет - цифры + текст после
+   * Первое слово - коллекция, остальное - цвет
+   * Пример: "Блисс 03 (св.беж)" -> коллекция: "Блисс", цвет: "03 (св.беж)"
    */
   private parseCollectionAndColorEgida(text: string): { collection: string; color: string } | null {
     const trimmed = text.trim()
@@ -72,38 +72,43 @@ export class EgidaParser extends BaseParser {
     // Нормализуем пробелы
     const normalized = trimmed.replace(/\s+/g, ' ')
     
-    // Ищем первое вхождение цифры
-    const firstDigitIndex = normalized.search(/\d/)
+    // Разделяем по первому пробелу
+    const firstSpaceIndex = normalized.indexOf(' ')
     
-    if (firstDigitIndex > 0) {
-      // Разделяем по первому вхождению цифры
-      const collection = normalized.substring(0, firstDigitIndex).trim()
-      const color = normalized.substring(firstDigitIndex).trim()
+    if (firstSpaceIndex > 0) {
+      // Первое слово - коллекция, остальное - цвет
+      const collection = normalized.substring(0, firstSpaceIndex).trim()
+      const color = normalized.substring(firstSpaceIndex + 1).trim()
       
       if (collection) {
         return { collection, color }
       }
     }
     
-    // Если цифр нет, весь текст - коллекция, цвет пустой
+    // Если пробела нет, весь текст - коллекция, цвет пустой
     return { collection: normalized, color: '' }
   }
 
   /**
    * Парсит наличие из столбца C
+   * Может иметь три значения:
+   * - "В наличии" -> в наличии
+   * - "Мало" -> в наличии, комментарий "ВНИМАНИЕ, МАЛО!"
+   * - "Нет в наличии" -> не в наличии
    */
   private parseStockStatus(text: string): { inStock: boolean; comment: string | null } {
-    const trimmed = String(text).trim().toLowerCase()
+    const trimmed = String(text).trim()
+    const lowerTrimmed = trimmed.toLowerCase()
     
-    if (trimmed === 'есть в наличии') {
+    if (lowerTrimmed === 'в наличии') {
       return { inStock: true, comment: null }
     }
     
-    if (trimmed === 'мало') {
+    if (lowerTrimmed === 'мало') {
       return { inStock: true, comment: 'ВНИМАНИЕ, МАЛО!' }
     }
     
-    if (trimmed === 'нет в наличии' || trimmed === 'нет') {
+    if (lowerTrimmed === 'нет в наличии' || lowerTrimmed === 'нет') {
       return { inStock: false, comment: null }
     }
     
@@ -187,7 +192,7 @@ export class EgidaParser extends BaseParser {
       // Парсим наличие из столбца C
       const { inStock, comment: stockComment } = this.parseStockStatus(colC)
       
-      // Столбец D (индекс 3) - комментарий
+      // Столбец D (индекс 3) - комментарий (только если нет в наличии)
       const colD = String(row[3] || '').trim()
       
       // Объединяем комментарии
@@ -198,8 +203,8 @@ export class EgidaParser extends BaseParser {
         finalComment = stockComment
       }
       
-      // Столбец D (индекс 3) - если заполнен, добавляем "На складе в Казани" + текст
-      if (colD) {
+      // Столбец D (индекс 3) - добавляем только если нет в наличии (inStock = false)
+      if (!inStock && colD) {
         const kazanComment = `На складе в Казани ${colD}`
         if (finalComment) {
           finalComment = `${finalComment}. ${kazanComment}`
@@ -266,7 +271,7 @@ export class EgidaParser extends BaseParser {
 
     // Определяем заголовки
     const firstRow = sampleData[0] || []
-    const hasHeaders = firstRow.some(cell => 
+    const hasHeaders = firstRow.some((cell: any) => 
       ['коллекция', 'цвет', 'наличие', 'метраж', 'дата'].some(keyword => 
         String(cell).toLowerCase().includes(keyword)
       )
