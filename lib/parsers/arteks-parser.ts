@@ -4,6 +4,28 @@ import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-
 
 export class ArteksParser extends BaseParser {
   /**
+   * Парсит статус наличия для Артекса
+   * "В наличии" -> true
+   * "По звонку" -> false
+   * "НЕТ" -> false
+   */
+  private parseArteksStockStatus(text: string): boolean | null {
+    if (!text) return null
+    
+    const str = text.trim().toLowerCase()
+    
+    if (str === 'в наличии') {
+      return true
+    }
+    
+    if (str === 'по звонку' || str === 'нет') {
+      return false
+    }
+    
+    return null
+  }
+
+  /**
    * Пытается скачать файл, перебирая даты от сегодня в обратном порядке
    */
   private async downloadFileWithDateFallback(baseUrl: string): Promise<Buffer> {
@@ -30,7 +52,7 @@ export class ArteksParser extends BaseParser {
           validateStatus: (status) => status === 200,
         })
         console.log(`[Arteks] Успешно скачан файл с датой: ${dateStr}`)
-        return Buffer.from(response.data)
+        return Buffer.from(response.data as ArrayBuffer)
       } catch (error: any) {
         if (error.response?.status === 404) {
           console.log(`[Arteks] Файл не найден для даты: ${dateStr}, пробуем следующую...`)
@@ -48,14 +70,21 @@ export class ArteksParser extends BaseParser {
     if (!rules) {
       throw new Error('Правила парсинга не установлены. Сначала проведите анализ.')
     }
+    
+    // Логируем загруженные правила
+    console.log(`[Arteks] Загружены правила парсинга:`, JSON.stringify(rules, null, 2))
 
     // Скачиваем файл с перебором дат
     const buffer = await this.downloadFileWithDateFallback(url)
     const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(buffer)
+    await workbook.xlsx.load(buffer as any)
     
     const worksheet = workbook.worksheets[0]
     const fabrics: ParsedFabric[] = []
+    
+    // Логируем загруженные правила
+    console.log(`[Arteks] Загружены правила парсинга:`, JSON.stringify(rules, null, 2))
+    console.log(`[Arteks] Индексы столбцов: collection=${rules.columnMappings.collection}, inStock=${rules.columnMappings.inStock}, comment=${rules.columnMappings.comment}`)
 
     // Сохраняем структуру для сравнения
     const structure = {
@@ -78,13 +107,31 @@ export class ArteksParser extends BaseParser {
       }
 
       // Excel использует 1-based номера колонок, но мы храним 0-based индексы
+      // Для Артекса: A=0 (коллекция), B=1 (наличие), C=2 (комментарий)
       const collectionCol = (rules.columnMappings.collection ?? 0) + 1 // A = индекс 0 -> номер 1
       const inStockCol = (rules.columnMappings.inStock ?? 1) + 1 // B = индекс 1 -> номер 2
-      const arrivalCol = (rules.columnMappings.nextArrivalDate ?? 2) + 1 // C = индекс 2 -> номер 3
+      const commentCol = (rules.columnMappings.comment ?? 2) + 1 // C = индекс 2 -> номер 3
+      const arrivalCol = (rules.columnMappings.nextArrivalDate ?? 2) + 1 // C = индекс 2 -> номер 3 (может быть тот же столбец)
       
-      const collectionColor = row.getCell(collectionCol).value?.toString().trim() || ''
-      const inStockText = row.getCell(inStockCol).value?.toString().trim() || ''
-      const arrivalText = row.getCell(arrivalCol).value?.toString().trim() || ''
+      // Читаем значения из ячеек
+      const collectionColorCell = row.getCell(collectionCol)
+      const inStockCell = row.getCell(inStockCol)
+      const commentCell = row.getCell(commentCol)
+      const arrivalCell = row.getCell(arrivalCol)
+      
+      const collectionColor = collectionColorCell?.value?.toString().trim() || ''
+      const inStockText = inStockCell?.value?.toString().trim() || ''
+      const commentText = commentCell?.value?.toString().trim() || ''
+      const arrivalText = arrivalCell?.value?.toString().trim() || ''
+      
+      // Детальное логирование для отладки (особенно для ELEGANT)
+      if (collectionColor.toUpperCase().includes('ELEGANT') && collectionColor.includes('11')) {
+        console.log(`[Arteks] ДЕТАЛЬНАЯ ОТЛАДКА строки ${rowNumber}:`)
+        console.log(`[Arteks]   Столбец A (${collectionCol}): "${collectionColor}"`)
+        console.log(`[Arteks]   Столбец B (${inStockCol}): "${inStockText}" (тип ячейки: ${inStockCell?.type})`)
+        console.log(`[Arteks]   Столбец C (${commentCol}): "${commentText}" (тип ячейки: ${commentCell?.type})`)
+        console.log(`[Arteks]   Правила: collection=${rules.columnMappings.collection}, inStock=${rules.columnMappings.inStock}, comment=${rules.columnMappings.comment}`)
+      }
 
       // Пропускаем заголовки и технические строки
       if (rules.skipPatterns?.some(pattern => collectionColor.includes(pattern))) {
@@ -100,14 +147,29 @@ export class ArteksParser extends BaseParser {
       }
       const { collection, color } = this.parseCollectionAndColor(collectionColor, specialRules)
 
+      // Парсим наличие для Артекса: "В наличии" -> true, "По звонку" или "НЕТ" -> false
+      const inStock = this.parseArteksStockStatus(inStockText)
+
       const fabric: ParsedFabric = {
         collection,
         colorNumber: color,
-        inStock: this.parseBoolean(inStockText),
+        inStock,
         meterage: null,
         price: null,
         nextArrivalDate: this.parseDate(arrivalText),
-        comment: null,
+        comment: commentText || null,
+      }
+
+      // Логируем первые несколько примеров для отладки, особенно с "ELEGANT" и "По звонку"
+      const shouldLog = fabrics.length < 5 || 
+                       collectionColor.toUpperCase().includes('ELEGANT') || 
+                       inStockText.toLowerCase().includes('звонку') ||
+                       inStockText.toLowerCase().includes('нет')
+      if (shouldLog) {
+        console.log(`[Arteks] Пример ${fabrics.length + 1}: "${fabric.collection}" "${fabric.colorNumber}" - ${fabric.inStock ? 'В наличии' : fabric.inStock === false ? 'Не в наличии' : 'Неизвестно'} (комментарий: ${fabric.comment || 'нет'})`)
+        console.log(`[Arteks] Исходные данные строки ${rowNumber}: A="${collectionColor}", B="${inStockText}", C="${commentText}"`)
+        console.log(`[Arteks] После парсинга: коллекция="${collection}", цвет="${color}", наличие=${inStock} (тип: ${typeof inStock}, значение: ${JSON.stringify(inStock)})`)
+        console.log(`[Arteks] Объект fabric перед добавлением:`, JSON.stringify(fabric, null, 2))
       }
 
       if (fabric.collection || fabric.colorNumber) {
@@ -122,7 +184,7 @@ export class ArteksParser extends BaseParser {
     // Пытаемся скачать файл с текущей датой
     const buffer = await this.downloadFileWithDateFallback(url)
     const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(buffer)
+    await workbook.xlsx.load(buffer as any)
     
     const worksheet = workbook.worksheets[0]
     const questions: ParsingAnalysis['questions'] = []

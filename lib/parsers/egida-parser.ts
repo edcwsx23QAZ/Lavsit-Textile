@@ -62,8 +62,8 @@ export class EgidaParser extends BaseParser {
 
   /**
    * Парсит коллекцию и цвет из столбца B по правилам Эгида
-   * Первое слово - коллекция, остальное - цвет
-   * Пример: "Блисс 03 (св.беж)" -> коллекция: "Блисс", цвет: "03 (св.беж)"
+   * Коллекция - слова до цифр, цвет - цифры и все что дальше
+   * Пример: "Блисс 01 (белый)" -> коллекция: "Блисс", цвет: "01 (белый)"
    */
   private parseCollectionAndColorEgida(text: string): { collection: string; color: string } | null {
     const trimmed = text.trim()
@@ -72,20 +72,20 @@ export class EgidaParser extends BaseParser {
     // Нормализуем пробелы
     const normalized = trimmed.replace(/\s+/g, ' ')
     
-    // Разделяем по первому пробелу
-    const firstSpaceIndex = normalized.indexOf(' ')
-    
-    if (firstSpaceIndex > 0) {
-      // Первое слово - коллекция, остальное - цвет
-      const collection = normalized.substring(0, firstSpaceIndex).trim()
-      const color = normalized.substring(firstSpaceIndex + 1).trim()
+    // Ищем первое вхождение цифры
+    const digitMatch = normalized.match(/\d/)
+    if (digitMatch && digitMatch.index !== undefined) {
+      // Коллекция - все до первой цифры
+      const collection = normalized.substring(0, digitMatch.index).trim()
+      // Цвет - цифры и все что дальше
+      const color = normalized.substring(digitMatch.index).trim()
       
       if (collection) {
         return { collection, color }
       }
     }
     
-    // Если пробела нет, весь текст - коллекция, цвет пустой
+    // Если цифр нет, весь текст - коллекция, цвет пустой
     return { collection: normalized, color: '' }
   }
 
@@ -126,10 +126,10 @@ export class EgidaParser extends BaseParser {
     
     const defaultRules: ParsingRules = {
       columnMappings: {
-        collection: 1, // Столбец B (индекс 1)
-        inStock: 2,    // Столбец C (индекс 2)
-        comment: 3,     // Столбец D (индекс 3)
-        nextArrivalDate: 4, // Столбец E (индекс 4)
+        collection: 0, // Столбец A (индекс 0) - коллекция и цвет
+        inStock: 1,    // Столбец B (индекс 1) - наличие
+        comment: 2,     // Столбец C (индекс 2) - метраж на складе
+        nextArrivalDate: 3, // Столбец D (индекс 3) - дата следующей поставки
       },
       skipRows: [],
       skipPatterns: [],
@@ -155,45 +155,96 @@ export class EgidaParser extends BaseParser {
     
     console.log(`[EgidaParser] Загружено строк: ${data.length}`)
     
+    // Логируем первые 5 строк для отладки
+    console.log(`[EgidaParser] Первые 5 строк файла для анализа:`)
+    for (let i = 0; i < Math.min(5, data.length); i++) {
+      console.log(`[EgidaParser] Строка ${i + 1}:`, data[i])
+    }
+    
+    // Определяем, есть ли заголовки в первой строке
+    const firstRow = data[0] || []
+    const hasHeaders = firstRow.some((cell: any) => {
+      const cellStr = String(cell || '').toLowerCase()
+      return ['коллекция', 'цвет', 'наличие', 'метраж', 'дата', 'комментарий'].some(keyword => 
+        cellStr.includes(keyword)
+      )
+    })
+    
+    // Начальная строка для парсинга (пропускаем заголовки, если они есть)
+    const startRow = hasHeaders ? 1 : 0
+    if (hasHeaders) {
+      console.log(`[EgidaParser] Обнаружена строка заголовков, пропускаем первую строку`)
+    }
+    
     const fabrics: ParsedFabric[] = []
     let processedCount = 0
     let skippedCount = 0
     let addedCount = 0
     
-    // Проходим по всем строкам
-    for (let i = 0; i < data.length; i++) {
+    // Проходим по строкам, начиная с startRow
+    for (let i = startRow; i < data.length; i++) {
       const row = data[i]
       const rowNumber = i + 1
       
-      // Столбец B (индекс 1) - коллекция и цвет
-      const colB = String(row[1] || '').trim()
-      if (!colB) {
+      // Проверяем, что строка не пустая
+      if (!row || row.length === 0) {
         skippedCount++
         continue
       }
       
-      // Столбец C (индекс 2) - наличие
-      const colC = String(row[2] || '').trim()
-      // Если столбец C пуст, пропускаем строку
-      if (!colC || colC === '') {
+      // Логируем первые несколько обработанных строк для отладки
+      if (addedCount < 3) {
+        console.log(`[EgidaParser] Обработка строки ${rowNumber}:`, row)
+      }
+      
+      // Столбец A (индекс 0) - коллекция и цвет
+      const colA = String(row[0] || '').trim()
+      if (!colA) {
+        skippedCount++
+        continue
+      }
+      
+      // Валидация: столбец A не должен быть статусом наличия
+      const colALower = colA.toLowerCase()
+      if (colALower === 'мало' || colALower === 'в наличии' || colALower === 'нет в наличии' || colALower === 'нет') {
+        // Это не коллекция, а статус наличия - пропускаем
+        console.log(`[EgidaParser] Предупреждение: строка ${rowNumber} - столбец A содержит статус наличия "${colA}", пропускаем`)
+        skippedCount++
+        continue
+      }
+      
+      // Столбец B (индекс 1) - наличие
+      const colB = String(row[1] || '').trim()
+      // Если столбец B пуст, пропускаем строку
+      if (!colB || colB === '') {
+        skippedCount++
+        continue
+      }
+      
+      // Валидация: столбец B должен быть статусом наличия
+      const colBLower = colB.toLowerCase()
+      if (colBLower !== 'мало' && colBLower !== 'в наличии' && colBLower !== 'нет в наличии' && colBLower !== 'нет') {
+        // Это не статус наличия - пропускаем
+        console.log(`[EgidaParser] Предупреждение: строка ${rowNumber} - столбец B не содержит статус наличия "${colB}", пропускаем`)
         skippedCount++
         continue
       }
       
       processedCount++
       
-      // Парсим коллекцию и цвет из столбца B
-      const collectionColor = this.parseCollectionAndColorEgida(colB)
+      // Парсим коллекцию и цвет из столбца A
+      const collectionColor = this.parseCollectionAndColorEgida(colA)
       if (!collectionColor || !collectionColor.collection) {
+        console.log(`[EgidaParser] Предупреждение: строка ${rowNumber} - не удалось распарсить коллекцию и цвет из "${colA}"`)
         skippedCount++
         continue
       }
       
-      // Парсим наличие из столбца C
-      const { inStock, comment: stockComment } = this.parseStockStatus(colC)
+      // Парсим наличие из столбца B
+      const { inStock, comment: stockComment } = this.parseStockStatus(colB)
       
-      // Столбец D (индекс 3) - комментарий (только если нет в наличии)
-      const colD = String(row[3] || '').trim()
+      // Столбец C (индекс 2) - комментарий/метраж (всегда начинается с "На складе в Казани")
+      const colC = String(row[2] || '').trim()
       
       // Объединяем комментарии
       let finalComment: string | null = null
@@ -203,9 +254,12 @@ export class EgidaParser extends BaseParser {
         finalComment = stockComment
       }
       
-      // Столбец D (индекс 3) - добавляем только если нет в наличии (inStock = false)
-      if (!inStock && colD) {
-        const kazanComment = `На складе в Казани ${colD}`
+      // Столбец C (индекс 2) - метраж на складе, всегда добавляем с префиксом "На складе в Казани"
+      // Проверяем, что это не статус наличия (может быть "есть в наличии" или число)
+      const colCLower = colC.toLowerCase()
+      if (colC && colCLower !== 'есть в наличии' && colCLower !== 'мало' && colCLower !== 'нет в наличии') {
+        // Это метраж или другой комментарий
+        const kazanComment = `На складе в Казани ${colC}`
         if (finalComment) {
           finalComment = `${finalComment}. ${kazanComment}`
         } else {
@@ -213,11 +267,11 @@ export class EgidaParser extends BaseParser {
         }
       }
       
-      // Столбец E (индекс 4) - дата следующего поступления
+      // Столбец D (индекс 3) - дата следующего поступления
       let nextArrivalDate: Date | null = null
-      const colE = row[4]
-      if (colE) {
-        const parsedDate = this.parseDate(String(colE))
+      const colD = row[3]
+      if (colD) {
+        const parsedDate = this.parseDate(String(colD))
         if (parsedDate && validateDate(parsedDate)) {
           nextArrivalDate = parsedDate
         }
@@ -238,7 +292,8 @@ export class EgidaParser extends BaseParser {
       
       // Логируем примеры для отладки
       if (addedCount <= 10) {
-        console.log(`[EgidaParser] Пример ${addedCount}: "${fabric.collection}" "${fabric.colorNumber}" - ${fabric.inStock ? 'В наличии' : 'Не в наличии'} (комментарий: ${fabric.comment || 'нет'})`)
+        console.log(`[EgidaParser] Пример ${addedCount}: "${fabric.collection}" "${fabric.colorNumber}" - ${fabric.inStock ? 'В наличии' : 'Не в наличии'} (комментарий: ${fabric.comment || 'нет'}, дата: ${fabric.nextArrivalDate ? fabric.nextArrivalDate.toLocaleDateString('ru-RU') : 'нет'})`)
+        console.log(`[EgidaParser] Исходные данные строки ${rowNumber}: A="${colA}", B="${colB}", C="${colC}", D="${colD}"`)
       }
     }
     

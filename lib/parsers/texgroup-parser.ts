@@ -78,7 +78,8 @@ export class TexGroupParser extends BaseParser {
       const inStockCol = rules.columnMappings.inStock ?? 3
       const inStockValue = row[inStockCol]?.toString().trim() || ''
 
-      let inStock: boolean | null = null
+      // Парсинг наличия для Tex.Group: если не стоит плашка "в наличии", пишем "Нет в наличии"
+      let inStock: boolean = false // По умолчанию нет в наличии
       let meterage: number | null = null
       let comment: string | null = null
 
@@ -86,7 +87,7 @@ export class TexGroupParser extends BaseParser {
         const lowerValue = inStockValue.toLowerCase()
         
         if (lowerValue === 'есть') {
-          inStock = true
+          inStock = true // Есть плашка "в наличии"
           comment = 'мало'
         } else {
           // Пытаемся распарсить число
@@ -94,11 +95,20 @@ export class TexGroupParser extends BaseParser {
           if (numberMatch) {
             const numValue = parseFloat(numberMatch[1].replace(',', '.'))
             if (!isNaN(numValue) && numValue > 0) {
-              inStock = true
+              inStock = true // Есть число - значит в наличии
               meterage = numValue
             }
           }
+          // Если не распознано как "есть" или число, inStock остается false (нет в наличии)
         }
+      } else {
+        // Пустое значение - нет в наличии
+        inStock = false
+      }
+
+      // Логирование для первых нескольких строк для отладки
+      if (fabrics.length < 5) {
+        console.log(`[TexGroup] Строка ${rowNumber}: коллекция="${collection}", цвет="${color}", inStockValue="${inStockValue}", inStock=${inStock}, meterage=${meterage}`)
       }
 
       const fabric: ParsedFabric = {

@@ -174,6 +174,33 @@ export class EmailExcelParser extends BaseParser {
       const arrivalCol = rules.columnMappings.nextArrivalDate
       const commentCol = rules.columnMappings.comment
 
+      // Для Нортекса: находим столбец с "пог.м" в заголовках и берем следующий столбец (F)
+      let nortexStockColIndex: number | null = null
+      if (rules.specialRules?.nortexPattern) {
+        // Ищем столбец с "пог.м" в первых 10 строках (заголовки)
+        for (let headerRowIndex = 0; headerRowIndex < Math.min(10, jsonData.length); headerRowIndex++) {
+          const headerRow = jsonData[headerRowIndex]
+          if (!headerRow) continue
+          
+          for (let colIndex = 0; colIndex < headerRow.length; colIndex++) {
+            const cellValue = String(headerRow[colIndex] || '').trim().toLowerCase()
+            if (cellValue.includes('пог.м') || cellValue.includes('пог м')) {
+              // Найден столбец с "пог.м", берем следующий столбец (F)
+              nortexStockColIndex = colIndex + 1
+              console.log(`[EmailExcelParser] Нортекс: найден столбец "пог.м" в индексе ${colIndex}, столбец наличия (F) = индекс ${nortexStockColIndex}`)
+              break
+            }
+          }
+          if (nortexStockColIndex !== null) break
+        }
+        
+        // Если не нашли, используем индекс 5 (F) по умолчанию
+        if (nortexStockColIndex === null) {
+          nortexStockColIndex = 5
+          console.log(`[EmailExcelParser] Нортекс: столбец "пог.м" не найден, используем индекс 5 (F) по умолчанию`)
+        }
+      }
+
       let rowCount = 0
       for (let rowIndex = 0; rowIndex < jsonData.length; rowIndex++) {
         const rowNumber = rowIndex + 1 // 1-based для правил
@@ -238,151 +265,46 @@ export class EmailExcelParser extends BaseParser {
           let finalComment: string | null = null
 
           if (specialRules.nortexPattern) {
-            // Нортекс: столбец E (4) - галочка "V" для наличия < 100м
-            // Столбец F (5) - может быть галочка "V", метраж (цифры), дата прихода (текст), комментарий
-            // Столбец G (6) - если заполнен, в наличии, метраж 100+м
+            // Нортекс: столбец F - это столбец, который следует за столбцом где написано "пог.м"
+            // Если в столбце F стоит значение отличное от "V", то пишем "Нет в наличии"
             
-            // Получаем значения из ячеек напрямую для точности (как в AmetistParser)
-            // Преобразуем индексы колонок в буквы (4 -> E, 5 -> F, 6 -> G)
-            const colE = String.fromCharCode(65 + 4) // E
-            const colF = String.fromCharCode(65 + 5) // F
-            const colG = String.fromCharCode(65 + 6) // G
+            // Используем найденный индекс столбца F (или индекс 5 по умолчанию)
+            const stockColIndex = nortexStockColIndex ?? 5
             
-            const cellE = worksheet[`${colE}${rowNumber}`]
-            const cellF = worksheet[`${colF}${rowNumber}`]
-            const cellG = worksheet[`${colG}${rowNumber}`]
-            
-            // Получаем значения с приоритетом cell.w (отформатированное строковое значение)
-            let eValue = ''
+            // Получаем значение из столбца F
             let fValue = ''
-            let gValue = ''
-            
-            if (cellE) {
-              eValue = (cellE.w !== undefined && typeof cellE.w === 'string') 
-                ? cellE.w.trim() 
-                : String(cellE.v || row[4] || '').trim()
+            if (row[stockColIndex] !== undefined && row[stockColIndex] !== null) {
+              fValue = String(row[stockColIndex]).trim()
             } else {
-              eValue = row[4] ? String(row[4]).trim() : ''
+              // Пробуем получить из ячейки напрямую
+              const colLetter = String.fromCharCode(65 + stockColIndex)
+              const cell = worksheet[`${colLetter}${rowNumber}`]
+              if (cell) {
+                fValue = (cell.w !== undefined && typeof cell.w === 'string') 
+                  ? cell.w.trim() 
+                  : String(cell.v || '').trim()
+              }
             }
             
-            if (cellF) {
-              fValue = (cellF.w !== undefined && typeof cellF.w === 'string') 
-                ? cellF.w.trim() 
-                : String(cellF.v || row[5] || '').trim()
-            } else {
-              fValue = row[5] ? String(row[5]).trim() : ''
-            }
-            
-            if (cellG) {
-              gValue = (cellG.w !== undefined && typeof cellG.w === 'string') 
-                ? cellG.w.trim() 
-                : String(cellG.v || row[6] || '').trim()
-            } else {
-              gValue = row[6] ? String(row[6]).trim() : ''
-            }
-
-            // Проверяем столбец G (100+м)
-            if (gValue) {
+            // Проверяем значение в столбце F
+            if (fValue === 'V' || fValue === 'v') {
+              // "V" = в наличии
               finalInStock = true
-              finalMeterage = 100 // Указываем 100+м
-            } else if (eValue === 'V' || eValue === 'v') {
-              // Столбец E содержит галочку - в наличии, метраж < 100м
-              finalInStock = true
-              finalMeterage = null // Меньше 100м, точный метраж не указан
             } else if (fValue) {
-              // Анализируем столбец F
-              if (fValue === 'V' || fValue === 'v') {
-                // Галочка в F - в наличии, метраж < 100м
-                finalInStock = true
-                finalMeterage = null
-              } else if (/^\d+[\.,]?\d*/.test(fValue)) {
-                // Цифры - метраж (улучшенный парсинг как в AmetistParser)
-                let numValue: number | null = null
-                
-                // Парсим значение в зависимости от его типа
-                if (typeof fValue === 'string') {
-                  let valueStr = String(fValue).trim()
-                  
-                  // Убираем знаки > и < для извлечения числа
-                  const cleanedStr = valueStr.replace(/^[<>≤≥]+|[<>]+$/g, '').trim()
-                  
-                  // КРИТИЧНО: Сначала ищем число с десятичной частью (85,6 или 85.6)
-                  // Это важно для правильного парсинга значений типа "85,6" из Excel
-                  const decimalMatch = cleanedStr.match(/(\d+)[,.](\d+)/)
-                  if (decimalMatch) {
-                    const wholePart = decimalMatch[1]
-                    const decimalPart = decimalMatch[2]
-                    const extractedStr = `${wholePart}.${decimalPart}`
-                    numValue = parseFloat(extractedStr)
-                    console.log(`[EmailExcelParser] Нортекс: найдено число с десятичной частью = ${numValue} (из "${fValue}")`)
-                  } else {
-                    // Если нет десятичной части, пробуем распарсить всю строку как число
-                    // Убираем пробелы, заменяем запятую на точку
-                    let normalizedStr = cleanedStr.replace(/\s+/g, '').replace(/,/g, '.')
-                    numValue = parseFloat(normalizedStr)
-                    
-                    // Если не удалось, ищем первое целое число в строке
-                    if (isNaN(numValue) || numValue === 0) {
-                      const integerMatch = cleanedStr.match(/(\d+)/)
-                      if (integerMatch) {
-                        numValue = parseFloat(integerMatch[1])
-                      }
-                    }
-                  }
-                } else if (typeof fValue === 'number') {
-                  // Если значение уже число, используем его
-                  if (!isNaN(fValue) && fValue > 0) {
-                    numValue = fValue
-                  }
-                }
-                
-                if (numValue !== null && !isNaN(numValue) && numValue > 0) {
-                  finalMeterage = numValue // Сохраняем точное значение без округления
-                  finalInStock = true
-                  
-                  // Если число меньше 10, добавляем комментарий (как в AmetistParser)
-                  if (numValue < 10) {
-                    finalComment = 'ВНИМАНИЕ, МАЛО!'
-                  }
-                }
-              } else if (/приход|поступление|декабрь|январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь/i.test(fValue)) {
-                // Текст с датой прихода - нет в наличии
-                finalInStock = false
-                // Парсим дату из текста
-                const dateMatch = fValue.match(/(\d{1,2})[-\s]+(\d{1,2})[-\s]+(декабрь|январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь)/i)
-                if (dateMatch) {
-                  const day = parseInt(dateMatch[1])
-                  const monthStr = dateMatch[3].toLowerCase()
-                  const months: Record<string, number> = {
-                    'январь': 0, 'февраль': 1, 'март': 2, 'апрель': 3,
-                    'май': 4, 'июнь': 5, 'июль': 6, 'август': 7,
-                    'сентябрь': 8, 'октябрь': 9, 'ноябрь': 10, 'декабрь': 11
-                  }
-                  const month = months[monthStr] ?? new Date().getMonth()
-                  const year = new Date().getFullYear()
-                  finalArrivalDate = new Date(year, month, day)
-                } else {
-                  // Формат "23-25.12" или "23-25 декабря"
-                  const rangeMatch = fValue.match(/(\d{1,2})[-\s]+(\d{1,2})[\.\s]+(\d{1,2})/i)
-                  if (rangeMatch) {
-                    const day1 = parseInt(rangeMatch[1])
-                    const day2 = parseInt(rangeMatch[2])
-                    const month = parseInt(rangeMatch[3]) - 1
-                    const year = new Date().getFullYear()
-                    // Используем первый день диапазона
-                    finalArrivalDate = new Date(year, month, day1)
-                    finalComment = `${day1}-${day2}.${month + 1}`
-                  } else {
-                    finalComment = fValue
-                  }
-                }
-              } else {
-                // Другой текст - комментарий
+              // Любое другое значение (не пустое) = нет в наличии
+              finalInStock = false
+              // Сохраняем значение в комментарий, если это не просто пустое
+              if (fValue && fValue.length > 0) {
                 finalComment = fValue
               }
             } else {
-              // Оба столбца пустые - нет в наличии
+              // Пустое значение = нет в наличии
               finalInStock = false
+            }
+            
+            // Логирование для отладки
+            if (rowCount < 5) {
+              console.log(`[EmailExcelParser] Нортекс строка ${rowNumber}: столбец F (индекс ${stockColIndex}) = "${fValue}", inStock = ${finalInStock}`)
             }
           } else {
             // Стандартная обработка для других поставщиков

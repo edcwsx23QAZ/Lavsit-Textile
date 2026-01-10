@@ -207,6 +207,20 @@ export abstract class BaseParser {
       }
     }
 
+    // Правило для Аметиста: первое слово - коллекция, остальное - цвет
+    // Пример: "ALASKA beige" -> коллекция: "ALASKA", цвет: "beige"
+    // Пример: "ALASKA dimrose" -> коллекция: "ALASKA", цвет: "dimrose"
+    if (specialRules?.ametistColorPattern) {
+      const parts = trimmed.split(/\s+/)
+      if (parts.length >= 2) {
+        const collection = parts[0]
+        const color = parts.slice(1).join(' ')
+        if (collection && color) {
+          return { collection, color }
+        }
+      }
+    }
+
     // Правило для Нортекса: убираем "Ткань" и парсим "Collection Color"
     // Пример: "Ткань Aphrodite 07 Mocca" -> коллекция: "Aphrodite", цвет: "07 Mocca"
     // ВАЖНО: Это правило НЕ должно срабатывать для Vektor (проверяем, что нет vektorPattern)
@@ -276,6 +290,23 @@ export abstract class BaseParser {
             collection,
             color,
           }
+        }
+      }
+    }
+
+    // Правило для Артекса: после удаления "Мебельная ткань" парсим слова до цифр как коллекцию, цифры как цвет
+    // Пример: "ELEGANT 11" -> коллекция: "ELEGANT", цвет: "11"
+    if (specialRules?.removeFurnitureText && !specialRules?.textilenovaPattern) {
+      // Ищем первое вхождение цифры
+      const digitMatch = trimmed.match(/\d/)
+      if (digitMatch && digitMatch.index !== undefined) {
+        // Коллекция - все до первой цифры
+        const collection = trimmed.substring(0, digitMatch.index).trim()
+        // Цвет - цифры и все что дальше
+        const color = trimmed.substring(digitMatch.index).trim()
+        
+        if (collection) {
+          return { collection, color }
         }
       }
     }

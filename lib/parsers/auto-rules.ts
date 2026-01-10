@@ -62,10 +62,11 @@ export function createAutoRules(
       rules.headerRow = 1
     }
   } else if (supplierName === 'Артекс') {
-    // Артекс: колонка A (индекс 0) - коллекция+цвет, B (1) - наличие, C (2) - дата
+    // Артекс: колонка A (индекс 0) - коллекция+цвет, B (1) - наличие, C (2) - комментарий
     rules.columnMappings.collection = 0 // A = индекс 0
     rules.columnMappings.inStock = 1 // B = индекс 1
-    rules.columnMappings.nextArrivalDate = 2 // C = индекс 2
+    rules.columnMappings.comment = 2 // C = индекс 2 - комментарий
+    rules.columnMappings.nextArrivalDate = 2 // C = индекс 2 - дата (может быть в том же столбце)
     
     // Специальное правило: убирать "Мебельная ткань"
     rules.specialRules = {

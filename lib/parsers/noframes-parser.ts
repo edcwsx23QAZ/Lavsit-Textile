@@ -186,6 +186,12 @@ export class NoFramesParser extends BaseParser {
           }
           const { collection, color } = this.parseCollectionAndColor(collectionColor, specialRules)
 
+          // Парсинг наличия для NoFrames: если не стоит плашка "в наличии", пишем "Нет в наличии"
+          // parseBoolean возвращает true если есть плашка, null если не распознано, false если явно "нет"
+          // Для NoFrames: если нет плашки (null) или явно "нет" (false) → false (нет в наличии)
+          const parsedInStock = this.parseBoolean(inStockText)
+          const inStock = parsedInStock === true ? true : false
+
           // Детальное логирование для первых нескольких обработанных строк
           if (processed < 5) {
             console.log(`[NoFrames] Обработка строки ${rowNumber}:`, {
@@ -193,6 +199,8 @@ export class NoFramesParser extends BaseParser {
               collection,
               color,
               inStockText,
+              parsedInStock,
+              inStock,
               arrivalText,
             })
           }
@@ -200,7 +208,7 @@ export class NoFramesParser extends BaseParser {
           const fabric: ParsedFabric = {
             collection,
             colorNumber: color,
-            inStock: this.parseBoolean(inStockText),
+            inStock,
             meterage: null,
             price: null,
             nextArrivalDate: this.parseDate(arrivalText),

@@ -201,3 +201,6 @@ export function FabricsTable({ fabrics: initialFabrics }: FabricsTableProps) {
   )
 }
 
+
+
+

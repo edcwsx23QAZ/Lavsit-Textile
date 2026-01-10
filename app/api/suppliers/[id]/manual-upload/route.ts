@@ -262,6 +262,11 @@ async function handlePriceUpload(
       return await handleNoFramesPriceUpload(supplierId, jsonData, categories, manualUpload.id)
     }
 
+    // Специальная обработка для Аметиста
+    if (supplierName === 'Аметист') {
+      return await handleAmetistPriceUpload(supplierId, jsonData, categories, manualUpload.id)
+    }
+
     // Пытаемся найти колонки с коллекцией, цветом и ценой
     // Анализируем первые строки для определения структуры
     let collectionCol = -1
@@ -487,6 +492,114 @@ async function handleNoFramesPriceUpload(
     success: true,
     updated,
     message: `Обновлено цен для ${collectionData.size} коллекций, всего тканей: ${updated}`,
+  })
+}
+
+/**
+ * Специальная обработка прайса для Аметиста
+ * Правила:
+ * - Изображение ткани в столбце A (индекс 0)
+ * - Коллекция и цвет в столбце C (индекс 2) - полное соответствие
+ * - Цена в столбце D (индекс 3)
+ * - Сохраняем только изображение и цену
+ */
+async function handleAmetistPriceUpload(
+  supplierId: string,
+  jsonData: any[][],
+  categories: Array<{ category: number; price: number }>,
+  manualUploadId: string
+) {
+  const { normalizePrice } = await import('@/lib/price-normalization')
+  const { calculatePricePerMeter, getCategoryByPrice } = await import('@/lib/fabric-categories')
+
+  // Создаем парсер для использования метода parseCollectionAndColor
+  const parser = new EmailExcelParser(supplierId, 'Аметист')
+
+  let updated = 0
+  let notFound = 0
+
+  // Обрабатываем каждую строку прайс-листа
+  for (let i = 0; i < jsonData.length; i++) {
+    const row = jsonData[i] || []
+    
+    // Столбец A (индекс 0) - изображение
+    const imageUrl = String(row[0] || '').trim()
+    
+    // Столбец C (индекс 2) - коллекция и цвет
+    const collectionColor = String(row[2] || '').trim()
+    if (!collectionColor) continue
+
+    // Парсим коллекцию и цвет из третьего столбца
+    // Используем специальное правило для Аметиста
+    const { collection, color } = (parser as any).parseCollectionAndColor(collectionColor, {
+      ametistColorPattern: true, // Используем специальное правило для Аметиста
+    })
+
+    if (!collection || !color) {
+      console.log(`[Ametist Price] Строка ${i + 1}: не удалось распарсить коллекцию и цвет из "${collectionColor}"`)
+      continue
+    }
+
+    // Столбец D (индекс 3) - цена
+    const rawPrice = row[3]
+    const priceValue = normalizePrice(rawPrice)
+    
+    if (!priceValue) {
+      console.log(`[Ametist Price] Строка ${i + 1}: коллекция="${collection}", цвет="${color}" - цена не найдена`)
+      continue
+    }
+
+    // Ищем ткань по полному соответствию коллекции и цвета
+    const fabric = await prisma.fabric.findFirst({
+      where: {
+        supplierId,
+        collection: collection.trim(),
+        colorNumber: color.trim(),
+      },
+    })
+
+    if (fabric) {
+      // Вычисляем цену за мп и категорию
+      const pricePerMeter = calculatePricePerMeter(priceValue, fabric.meterage)
+      const category = getCategoryByPrice(pricePerMeter, categories)
+
+      // Обновляем только изображение и цену
+      await prisma.fabric.update({
+        where: { id: fabric.id },
+        data: {
+          imageUrl: imageUrl || null, // Сохраняем изображение, если есть
+          price: priceValue,
+          pricePerMeter,
+          category,
+          lastUpdatedAt: new Date(),
+        },
+      })
+      updated++
+      
+      if (updated <= 5) {
+        console.log(`[Ametist Price] Обновлено: коллекция="${collection}", цвет="${color}", цена=${priceValue}, изображение="${imageUrl || 'нет'}"`)
+      }
+    } else {
+      notFound++
+      if (notFound <= 5) {
+        console.log(`[Ametist Price] Не найдено: коллекция="${collection}", цвет="${color}"`)
+      }
+    }
+  }
+
+  // Обновляем запись о загрузке
+  await prisma.manualUpload.update({
+    where: { id: manualUploadId },
+    data: {
+      processedAt: new Date(),
+    },
+  })
+
+  return NextResponse.json({
+    success: true,
+    updated,
+    notFound,
+    message: `Обновлено: ${updated}, не найдено: ${notFound}`,
   })
 }
 

@@ -263,6 +263,7 @@ export function FabricsGroupedTable({ fabrics, categories, onUpdate, onExclude, 
               <TableHead className="text-right">Цена/м</TableHead>
               <TableHead>Категория</TableHead>
               <TableHead className="text-center">В наличии</TableHead>
+              <TableHead>Дата следующей поставки</TableHead>
               <TableHead>Комментарий</TableHead>
               <TableHead className="w-20"></TableHead>
             </TableRow>
@@ -302,6 +303,7 @@ export function FabricsGroupedTable({ fabrics, categories, onUpdate, onExclude, 
                       </TableCell>
                       <TableCell>{firstFabric.fabricType || '-'}</TableCell>
                       <TableCell className="max-w-xs truncate">{firstFabric.description || '-'}</TableCell>
+                      <TableCell></TableCell>
                       <TableCell></TableCell>
                       <TableCell></TableCell>
                       <TableCell></TableCell>
@@ -379,6 +381,15 @@ export function FabricsGroupedTable({ fabrics, categories, onUpdate, onExclude, 
                           )}
                         </TableCell>
                         <TableCell>
+                          {fabric.nextArrivalDate ? (
+                            <span className="text-sm">
+                              {formatDate(fabric.nextArrivalDate)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           {fabric.meterage !== null && fabric.meterage < 10 ? (
                             <span className="px-2 py-1 bg-yellow-200 text-yellow-900 text-xs font-medium rounded">
                               ВНИМАНИЕ, МАЛО!
@@ -418,7 +429,7 @@ export function FabricsGroupedTable({ fabrics, categories, onUpdate, onExclude, 
 
             {Object.keys(grouped).length === 0 && (
               <TableRow>
-                <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={14} className="text-center text-muted-foreground py-8">
                   Ткани не найдены
                 </TableCell>
               </TableRow>

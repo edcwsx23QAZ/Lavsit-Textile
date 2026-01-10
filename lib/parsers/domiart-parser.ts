@@ -61,14 +61,14 @@ export class DomiartParser extends BaseParser {
 
       const { collection, color } = this.parseCollectionAndColor(collectionColor, specialRules)
 
-      // Парсинг наличия для Домиарт: - "нет", +/- "мало", + "много"
+      // Парсинг наличия для Домиарт: + "в наличии", - "нет в наличии", +/- "нет в наличии"
       let inStock: boolean | null = null
-      if (inStockText === '-' || inStockText.toLowerCase() === 'нет') {
-        inStock = false
-      } else if (inStockText === '+' || inStockText.toLowerCase() === 'много') {
-        inStock = true
+      if (inStockText === '+' || inStockText.toLowerCase() === 'много') {
+        inStock = true // "+" = в наличии
+      } else if (inStockText === '-' || inStockText.toLowerCase() === 'нет') {
+        inStock = false // "-" = нет в наличии
       } else if (inStockText === '+/-' || inStockText.toLowerCase() === 'мало') {
-        inStock = true // "мало" считаем как наличие
+        inStock = false // "+/-" = нет в наличии
       }
 
       const fabric: ParsedFabric = {

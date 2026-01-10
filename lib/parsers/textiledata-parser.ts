@@ -86,14 +86,83 @@ export class TextileDataParser extends BaseParser {
       }
       const { collection, color } = this.parseCollectionAndColor(collectionColor, specialRules)
 
+      // Парсинг метража и наличия для TextileData
+      // 1. В столбец "метраж" должно попадать количество включая знаки ">" или "<"
+      // 2. Если в столбце метраж цифра больше 10 ставим плашку "в наличии"
+      // 3. Если в столбце метраж цифра меньше 10, ставим плашку "нет в наличии"
+      // 5. Если в столбец метраж не попали цифры или попал символ -, ставим плашку "нет в наличии"
+      
+      let meterage: number | null = null
+      let inStock: boolean = false // По умолчанию нет в наличии
+      let meterageComment: string | null = null // Для сохранения оригинального текста с > или <
+      
+      if (meterageText && meterageText.trim() !== '-' && meterageText.trim() !== '') {
+        const trimmedMeterage = meterageText.trim()
+        
+        // Проверяем, есть ли знаки > или < в тексте метража
+        const hasComparisonSign = /[<>]/.test(trimmedMeterage)
+        
+        // Извлекаем число из текста (может быть ">10", "<5", "15", "10.5" и т.д.)
+        const numberMatch = trimmedMeterage.match(/(\d+(?:[.,]\d+)?)/)
+        if (numberMatch) {
+          const numValue = parseFloat(numberMatch[1].replace(',', '.'))
+          if (!isNaN(numValue) && numValue > 0) {
+            meterage = numValue
+            
+            // Если в метраже есть знаки > или <, сохраняем оригинальный текст
+            if (hasComparisonSign) {
+              meterageComment = trimmedMeterage
+            }
+            
+            // Определяем наличие на основе числа
+            if (numValue > 10) {
+              inStock = true // Больше 10 - в наличии
+            } else {
+              inStock = false // Меньше или равно 10 - нет в наличии
+            }
+          }
+        } else {
+          // Нет цифр - нет в наличии
+          inStock = false
+        }
+      } else {
+        // Пустое или "-" - нет в наличии
+        inStock = false
+      }
+
+      // 4. Если в графу "комментарий" попали цифры, пишем перед ними текст "Максимальный размер ролика"
+      let finalComment: string | null = null
+      if (commentText && commentText.trim()) {
+        // Проверяем, есть ли в комментарии цифры
+        if (/\d/.test(commentText)) {
+          finalComment = `Максимальный размер ролика ${commentText.trim()}`
+        } else {
+          finalComment = commentText.trim()
+        }
+      }
+      
+      // Объединяем комментарий метража (с > или <) с комментарием из столбца комментария
+      if (meterageComment) {
+        if (finalComment) {
+          finalComment = `${meterageComment}. ${finalComment}`
+        } else {
+          finalComment = meterageComment
+        }
+      }
+
       const fabric: ParsedFabric = {
         collection,
         colorNumber: color,
-        inStock: null, // Наличие не указано в требованиях
-        meterage: this.parseNumber(meterageText),
+        inStock,
+        meterage,
         price: null,
         nextArrivalDate: this.parseDate(arrivalText),
-        comment: commentText || null,
+        comment: finalComment,
+      }
+
+      // Логирование для первых нескольких строк для отладки
+      if (fabrics.length < 5) {
+        console.log(`[TextileData] Строка ${index + 1}: коллекция="${collection}", цвет="${color}", meterageText="${meterageText}", meterage=${meterage}, inStock=${inStock}, comment="${finalComment}"`)
       }
 
       if (fabric.collection || fabric.colorNumber) {

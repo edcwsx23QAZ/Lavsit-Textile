@@ -429,13 +429,6 @@ export async function updateFabricsFromParser(
           finalMeterage = existing.meterage
         }
         
-        // Детальное логирование для Viptextil
-        if (fabric.collection && fabric.collection.length > 0) {
-          console.log(`[updateFabricsFromParser] Обновление ткани: "${fabric.collection}" - "${fabric.colorNumber}"`)
-          console.log(`[updateFabricsFromParser]   - inStock: парсер=${fabric.inStock}, финальное=${updateData.inStock}`)
-          console.log(`[updateFabricsFromParser]   - метраж: парсер=${fabric.meterage}, финальное=${finalMeterage}`)
-        }
-        
         // Автоматически добавляем комментарий для тканей с метражом < 10
         let finalComment = fabric.comment || null
         if (finalMeterage !== null && finalMeterage < 10) {
@@ -473,8 +466,9 @@ export async function updateFabricsFromParser(
         updateData.fabricType = existing.fabricType ?? null
         updateData.description = existing.description ?? null
         
-        // Наличие: если парсер вернул значение - используем его, иначе сохраняем существующее (если есть ручные данные)
-        if (fabric.inStock !== null && fabric.inStock !== undefined) {
+        // Наличие: если парсер вернул значение (включая false) - используем его, иначе сохраняем существующее (если есть ручные данные)
+        // ВАЖНО: проверяем именно на undefined, а не на null, так как false - это валидное значение
+        if (fabric.inStock !== undefined) {
           updateData.inStock = fabric.inStock
         } else if (hasManual) {
           // Если есть ручные данные и парсер не вернул значение - сохраняем существующее
@@ -482,6 +476,21 @@ export async function updateFabricsFromParser(
         } else {
           // Если нет ручных данных и парсер не вернул значение - оставляем null
           updateData.inStock = null
+        }
+        
+        // Детальное логирование для Viptextil
+        if (fabric.collection && fabric.collection.length > 0) {
+          console.log(`[updateFabricsFromParser] Обновление ткани: "${fabric.collection}" - "${fabric.colorNumber}"`)
+          console.log(`[updateFabricsFromParser]   - inStock: парсер=${fabric.inStock}, финальное=${updateData.inStock}`)
+          console.log(`[updateFabricsFromParser]   - метраж: парсер=${fabric.meterage}, финальное=${finalMeterage}`)
+        }
+        
+        // Детальное логирование для Артекса (особенно для ELEGANT)
+        if (fabric.collection && fabric.collection.toUpperCase().includes('ELEGANT')) {
+          console.log(`[updateFabricsFromParser] ===== ОБНОВЛЕНИЕ АРТЕКС ELEGANT =====`)
+          console.log(`[updateFabricsFromParser] Данные из парсера: inStock=${fabric.inStock} (тип: ${typeof fabric.inStock}), comment="${fabric.comment}"`)
+          console.log(`[updateFabricsFromParser] Финальные данные для сохранения: inStock=${updateData.inStock}, comment="${updateData.comment}"`)
+          console.log(`[updateFabricsFromParser] ==========================================`)
         }
         
         // Метраж: используем финальное значение
@@ -513,6 +522,14 @@ export async function updateFabricsFromParser(
           } else {
             finalComment = warningComment
           }
+        }
+        
+        // Детальное логирование для Артекса при создании (особенно для ELEGANT)
+        if (fabric.collection && fabric.collection.toUpperCase().includes('ELEGANT')) {
+          console.log(`[updateFabricsFromParser] ===== СОЗДАНИЕ АРТЕКС ELEGANT =====`)
+          console.log(`[updateFabricsFromParser] Данные из парсера: inStock=${fabric.inStock} (тип: ${typeof fabric.inStock}), comment="${fabric.comment}"`)
+          console.log(`[updateFabricsFromParser] Финальные данные для сохранения: inStock=${fabric.inStock}, comment="${finalComment}"`)
+          console.log(`[updateFabricsFromParser] ==========================================`)
         }
         
         await prisma.fabric.create({
