@@ -58,4 +58,5 @@ data/email-attachments/
 
 .vercel
 .env*.local
+.env.vercel
 .vercel-token
