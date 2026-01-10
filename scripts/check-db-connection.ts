@@ -130,3 +130,4 @@ checkDatabaseConnection()
     process.exit(1)
   })
 
+

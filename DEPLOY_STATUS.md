@@ -59,3 +59,4 @@ vercel --prod --token R7r2N1maVjii1BkkRQvidtls
 - **Production URL:** https://lavsit-textile-narfius-projects.vercel.app
 - **Токен:** Сохранен в `.vercel-token` (добавлен в `.gitignore`)
 
+

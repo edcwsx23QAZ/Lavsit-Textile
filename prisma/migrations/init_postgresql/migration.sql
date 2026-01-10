@@ -140,3 +140,4 @@ CREATE INDEX IF NOT EXISTS "ManualUpload_type_idx" ON "ManualUpload"("type");
 -- CreateIndex
 CREATE INDEX IF NOT EXISTS "ManualUpload_isActive_idx" ON "ManualUpload"("isActive");
 
+

@@ -84,3 +84,4 @@ checkDatabaseViaVercel()
     process.exit(1)
   })
 
+

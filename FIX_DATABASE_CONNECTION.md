@@ -122,3 +122,4 @@ vercel --prod --token R7r2N1maVjii1BkkRQvidtls --yes
 
 4. Проверьте, что миграции применены - таблицы должны быть видны в **Table Editor** в Supabase Dashboard
 
+

@@ -181,3 +181,4 @@ supabase db push
 **Project ID**: hduadapicktrcrqjvzvd  
 **Project URL**: https://hduadapicktrcrqjvzvd.supabase.co
 
+

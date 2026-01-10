@@ -165,3 +165,4 @@ npx tsx scripts/test-vercel-deployment.ts
 
 После применения миграций все должно работать на 100%.
 
+

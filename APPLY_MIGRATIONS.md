@@ -117,3 +117,4 @@ postgresql://postgres.hduadapicktrcrqjvzvd:edcwsx123QAZ!@aws-0-us-east-1.pooler.
 
 **Примечание:** Сейчас используется direct connection (порт 5432) для Vercel, что должно работать, так как Vercel использует динамические IP адреса, которые обычно разрешены Supabase по умолчанию.
 
+

@@ -135,3 +135,4 @@ applyMigrationsViaPostgres()
     process.exit(1)
   })
 
+

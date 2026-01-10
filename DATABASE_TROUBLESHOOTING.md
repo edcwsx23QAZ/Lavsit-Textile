@@ -91,3 +91,4 @@ DATABASE_URL = postgresql://postgres:edcwsx123QAZ!@db.hduadapicktrcrqjvzvd.supab
 - **Остальные страницы требуют базу данных** - они используют Server Components с Prisma
 - **API endpoints также требуют базу данных** - они обращаются к Prisma для выполнения запросов
 
+

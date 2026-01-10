@@ -114,3 +114,4 @@ ORDER BY table_name;
 **Vercel URL**: https://lavsit-textile.vercel.app  
 **Статус**: Ожидается ручное применение миграций
 
+

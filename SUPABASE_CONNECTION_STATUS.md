@@ -141,3 +141,4 @@ vercel env ls --token R7r2N1maVjii1BkkRQvidtls
 3. Убедитесь, что база данных действительно активна в Supabase Dashboard
 4. Проверьте, нет ли ограничений на подключения в настройках Supabase (Settings → Database → Connection Pooling)
 
+

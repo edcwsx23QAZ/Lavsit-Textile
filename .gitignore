@@ -25,6 +25,8 @@ yarn-error.log*
 # Local env files
 .env*.local
 .env
+.env.vercel
+.env.vercel-check
 
 # Vercel
 .vercel
@@ -60,3 +62,6 @@ data/email-attachments/
 .env*.local
 .env.vercel
 .vercel-token
+
+# Ревизии (git bundles) - можно закоммитить, но обычно лучше в gitignore
+# .revisions/

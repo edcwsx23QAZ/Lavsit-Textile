@@ -77,3 +77,4 @@ applyMigrationsViaVercel()
     process.exit(1)
   })
 
+

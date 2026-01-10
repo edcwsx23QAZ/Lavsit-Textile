@@ -118,3 +118,4 @@ export function PalettePageClient({ initialFabrics }: PalettePageClientProps) {
 
 
 
+
