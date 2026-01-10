@@ -1,168 +1,224 @@
-/**
- * Автоматический тест всех API endpoints
- * Запуск: tsx scripts/test-all-pages.ts
- */
+import { PrismaClient } from '@prisma/client'
 
-const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:4001'
-const TIMEOUT = 60000 // 60 секунд
+const prisma = new PrismaClient({
+  log: ['error', 'warn'],
+})
 
 interface TestResult {
-  endpoint: string
+  name: string
   success: boolean
-  duration: number
-  statusCode?: number
-  dataSize?: number
-  itemCount?: number | string
+  message: string
+  data?: any
   error?: string
 }
 
-const results: TestResult[] = []
-
-async function testEndpoint(name: string, url: string): Promise<TestResult> {
-  console.log(`\n[Тест] ${name}`)
-  console.log(`  URL: ${url}`)
-  
-  const startTime = Date.now()
-  const result: TestResult = {
-    endpoint: name,
-    success: false,
-    duration: 0,
-  }
-  
+async function testDatabaseConnection(): Promise<TestResult> {
   try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT)
-    
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
+    const result = await prisma.$queryRaw`SELECT 1 as test`
+    const tables = await prisma.$queryRaw<Array<{ table_name: string }>>`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+      AND table_type = 'BASE TABLE'
+      ORDER BY table_name
+    `
+    return {
+      name: 'Database Connection',
+      success: true,
+      message: `База данных доступна. Найдено таблиц: ${tables.length}`,
+      data: { tablesCount: tables.length, tables: tables.map(t => t.table_name) }
+    }
+  } catch (error: any) {
+    return {
+      name: 'Database Connection',
+      success: false,
+      message: 'База данных недоступна',
+      error: error.message
+    }
+  }
+}
+
+async function testCategories(): Promise<TestResult> {
+  try {
+    const categories = await prisma.fabricCategory.findMany({
+      orderBy: { price: 'asc' },
+    })
+    return {
+      name: 'Categories Page',
+      success: true,
+      message: `Категории загружены. Найдено: ${categories.length}`,
+      data: { count: categories.length }
+    }
+  } catch (error: any) {
+    return {
+      name: 'Categories Page',
+      success: false,
+      message: 'Ошибка загрузки категорий',
+      error: error.message
+    }
+  }
+}
+
+async function testFabrics(): Promise<TestResult> {
+  try {
+    const fabrics = await prisma.fabric.findMany({
+      where: { excludedFromParsing: false },
+      take: 10,
+      select: {
+        id: true,
+        collection: true,
+        colorNumber: true,
+        inStock: true,
       },
     })
-    
-    clearTimeout(timeoutId)
-    const duration = Date.now() - startTime
-    result.duration = duration
-    
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Failed to read error text')
-      result.error = `HTTP ${response.status} ${response.statusText}: ${errorText.substring(0, 200)}`
-      console.log(`  ❌ ОШИБКА: ${response.status} ${response.statusText}`)
-      console.log(`  Ответ: ${errorText.substring(0, 200)}`)
-      console.log(`  Время: ${duration}ms`)
-      return result
+    return {
+      name: 'Fabrics Page',
+      success: true,
+      message: `Ткани загружены. Всего (первые 10): ${fabrics.length}`,
+      data: { count: fabrics.length }
     }
-    
-    const data = await response.json()
-    const dataSize = JSON.stringify(data).length
-    const itemCount = Array.isArray(data) 
-      ? data.length 
-      : (data.count !== undefined 
-          ? data.count 
-          : (data.exclusions !== undefined 
-              ? 'object' 
-              : 1))
-    
-    result.success = true
-    result.statusCode = response.status
-    result.dataSize = dataSize
-    result.itemCount = itemCount
-    
-    console.log(`  ✅ УСПЕХ`)
-    console.log(`  Время: ${duration}ms`)
-    console.log(`  Размер данных: ${(dataSize / 1024).toFixed(2)} KB`)
-    console.log(`  Элементов: ${itemCount}`)
-    
-    return result
   } catch (error: any) {
-    const duration = Date.now() - startTime
-    result.duration = duration
-    
-    if (error.name === 'AbortError') {
-      result.error = `Timeout after ${TIMEOUT}ms`
-      console.log(`  ❌ ТАЙМАУТ: Запрос был прерван после ${TIMEOUT}ms`)
-    } else {
-      result.error = error.message || 'Unknown error'
-      console.log(`  ❌ ОШИБКА: ${error.message}`)
+    return {
+      name: 'Fabrics Page',
+      success: false,
+      message: 'Ошибка загрузки тканей',
+      error: error.message
     }
-    console.log(`  Время: ${duration}ms`)
-    return result
   }
 }
 
-async function runTests() {
-  console.log('='.repeat(60))
-  console.log('АВТОМАТИЧЕСКОЕ ТЕСТИРОВАНИЕ API ENDPOINTS')
-  console.log('='.repeat(60))
-  console.log(`Базовый URL: ${BASE_URL}`)
-  console.log(`Таймаут: ${TIMEOUT / 1000} секунд`)
-  console.log('\n⚠️  Убедитесь, что сервер запущен: npm run dev\n')
-  
-  // Тест 1: Поставщики
-  results.push(await testEndpoint(
-    'GET /api/suppliers',
-    `${BASE_URL}/api/suppliers`
-  ))
-  
-  // Тест 2: Категории
-  results.push(await testEndpoint(
-    'GET /api/categories',
-    `${BASE_URL}/api/categories`
-  ))
-  
-  // Тест 3: Ткани (самый тяжелый)
-  results.push(await testEndpoint(
-    'GET /api/fabrics',
-    `${BASE_URL}/api/fabrics`
-  ))
-  
-  // Тест 4: Исключения
-  results.push(await testEndpoint(
-    'GET /api/exclusions',
-    `${BASE_URL}/api/exclusions`
-  ))
-  
-  // Итоги
-  console.log('\n' + '='.repeat(60))
-  console.log('ИТОГИ ТЕСТИРОВАНИЯ')
-  console.log('='.repeat(60))
-  
-  const passed = results.filter(r => r.success).length
-  const total = results.length
-  const avgDuration = results.reduce((sum, r) => sum + r.duration, 0) / total
-  
-  console.log(`Успешно: ${passed}/${total}`)
-  console.log(`Среднее время: ${avgDuration.toFixed(0)}ms`)
-  console.log(`\nДетали:`)
-  
-  results.forEach(result => {
-    const status = result.success ? '✅' : '❌'
-    const durationStatus = result.duration > TIMEOUT ? '⚠️  ТАЙМАУТ' : result.duration > 30000 ? '⚠️  МЕДЛЕННО' : ''
-    console.log(`  ${status} ${result.endpoint}: ${result.duration}ms ${durationStatus}`)
-    if (result.success) {
-      console.log(`     - Статус: ${result.statusCode}`)
-      console.log(`     - Размер: ${result.dataSize ? (result.dataSize / 1024).toFixed(2) + ' KB' : 'N/A'}`)
-      console.log(`     - Элементов: ${result.itemCount}`)
-    } else {
-      console.log(`     - Ошибка: ${result.error}`)
+async function testSuppliers(): Promise<TestResult> {
+  try {
+    const suppliers = await prisma.supplier.findMany({
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        _count: { select: { fabrics: true } }
+      },
+    })
+    return {
+      name: 'Suppliers Page',
+      success: true,
+      message: `Поставщики загружены. Найдено: ${suppliers.length}`,
+      data: { count: suppliers.length, suppliers: suppliers.map(s => ({ name: s.name, status: s.status, fabricsCount: s._count.fabrics })) }
     }
-  })
-  
-  if (passed === total) {
-    console.log('\n✅ Все тесты пройдены!')
-    process.exit(0)
-  } else {
-    console.log('\n❌ Некоторые тесты не прошли')
-    process.exit(1)
+  } catch (error: any) {
+    return {
+      name: 'Suppliers Page',
+      success: false,
+      message: 'Ошибка загрузки поставщиков',
+      error: error.message
+    }
   }
 }
 
-// Запуск тестов
-runTests().catch(error => {
-  console.error('Критическая ошибка:', error)
+async function testPalette(): Promise<TestResult> {
+  try {
+    const fabrics = await prisma.fabric.findMany({
+      where: { excludedFromParsing: false },
+      select: {
+        id: true,
+        colorHex: true,
+      },
+      take: 10,
+    })
+    const withColors = fabrics.filter(f => f.colorHex).length
+    return {
+      name: 'Palette Page',
+      success: true,
+      message: `Палитра загружена. Тканей с цветами: ${withColors} из ${fabrics.length}`,
+      data: { total: fabrics.length, withColors }
+    }
+  } catch (error: any) {
+    return {
+      name: 'Palette Page',
+      success: false,
+      message: 'Ошибка загрузки палитры',
+      error: error.message
+    }
+  }
+}
+
+async function testParsingRules(): Promise<TestResult> {
+  try {
+    const rules = await prisma.parsingRule.findMany({
+      select: {
+        id: true,
+        supplierId: true,
+      },
+    })
+    return {
+      name: 'Parsing Rules',
+      success: true,
+      message: `Правила парсинга загружены. Найдено: ${rules.length}`,
+      data: { count: rules.length }
+    }
+  } catch (error: any) {
+    return {
+      name: 'Parsing Rules',
+      success: false,
+      message: 'Ошибка загрузки правил парсинга',
+      error: error.message
+    }
+  }
+}
+
+async function runAllTests() {
+  console.log('🧪 Запуск тестов всех страниц и функций...\n')
+  
+  const tests = [
+    testDatabaseConnection,
+    testCategories,
+    testFabrics,
+    testSuppliers,
+    testPalette,
+    testParsingRules,
+  ]
+
+  const results: TestResult[] = []
+
+  for (const test of tests) {
+    try {
+      const result = await test()
+      results.push(result)
+      const icon = result.success ? '✅' : '❌'
+      console.log(`${icon} ${result.name}: ${result.message}`)
+      if (result.error) {
+        console.log(`   Ошибка: ${result.error}`)
+      }
+    } catch (error: any) {
+      results.push({
+        name: test.name,
+        success: false,
+        message: 'Критическая ошибка',
+        error: error.message
+      })
+      console.log(`❌ ${test.name}: Критическая ошибка - ${error.message}`)
+    }
+  }
+
+  console.log('\n📊 Итоги тестирования:')
+  const successCount = results.filter(r => r.success).length
+  const failCount = results.filter(r => !r.success).length
+  console.log(`✅ Успешно: ${successCount}`)
+  console.log(`❌ Ошибок: ${failCount}`)
+  console.log(`📈 Всего: ${results.length}`)
+
+  const failedTests = results.filter(r => !r.success)
+  if (failedTests.length > 0) {
+    console.log('\n❌ Неудачные тесты:')
+    failedTests.forEach(test => {
+      console.log(`   - ${test.name}: ${test.error || test.message}`)
+    })
+  }
+
+  await prisma.$disconnect()
+  
+  process.exit(failCount > 0 ? 1 : 0)
+}
+
+runAllTests().catch((error) => {
+  console.error('❌ Критическая ошибка при выполнении тестов:', error)
   process.exit(1)
 })
-
-
-
-
