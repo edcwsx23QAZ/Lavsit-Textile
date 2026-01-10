@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 300
+    }
+  },
+  "buildCommand": "prisma generate && next build",
+  "installCommand": "npm install",
+  "crons": []
+}
+

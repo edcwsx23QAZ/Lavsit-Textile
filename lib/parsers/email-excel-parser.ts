@@ -417,7 +417,7 @@ export class EmailExcelParser extends BaseParser {
 
     // Определяем заголовки
     const firstRow = sampleData[0] || []
-    const hasHeaders = firstRow.some((cell) =>
+    const hasHeaders = firstRow.some((cell: any) =>
       ['коллекция', 'цвет', 'наличие', 'дата', 'метраж', 'цена'].some((keyword) =>
         String(cell).toLowerCase().includes(keyword)
       )

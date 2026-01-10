@@ -2,9 +2,13 @@ import { prisma } from '@/lib/db/prisma'
 import { FabricsPageClient } from './FabricsPageClient'
 import { calculatePricePerMeter, getCategoryByPrice, DEFAULT_CATEGORIES } from '@/lib/fabric-categories'
 
+// Отключаем static generation - страница динамическая
+export const dynamic = 'force-dynamic'
+
 export default async function FabricsPage() {
-  // Загружаем данные напрямую в Server Component
-  const [fabricsRaw, categories, suppliers] = await Promise.all([
+  try {
+    // Загружаем данные напрямую в Server Component
+    const [fabricsRaw, categories, suppliers] = await Promise.all([
     prisma.fabric.findMany({
       where: { excludedFromParsing: false },
       select: {
@@ -104,20 +108,48 @@ export default async function FabricsPage() {
     return a.colorNumber.localeCompare(b.colorNumber, 'ru')
   })
 
-  return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Ткани</h1>
-        <p className="text-muted-foreground">
-          Всего тканей: {sortedFabrics.length.toLocaleString('ru')}
-        </p>
-      </div>
+    return (
+      <div className="container mx-auto p-6">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold mb-2">Ткани</h1>
+          <p className="text-muted-foreground">
+            Всего тканей: {sortedFabrics.length.toLocaleString('ru')}
+          </p>
+        </div>
 
-      <FabricsPageClient 
-        initialFabrics={sortedFabrics} 
-        initialCategories={categories}
-        initialSuppliers={sortedSuppliers}
-      />
-    </div>
-  )
+        <FabricsPageClient 
+          initialFabrics={sortedFabrics} 
+          initialCategories={categories}
+          initialSuppliers={sortedSuppliers}
+        />
+      </div>
+    )
+  } catch (error: any) {
+    console.error('[FabricsPage] Error:', error)
+    
+    // Если база данных недоступна, показываем сообщение
+    if (error.code === 'P1001' || error.message?.includes('Can\'t reach database')) {
+      return (
+        <div className="container mx-auto p-6">
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold mb-2">Ткани</h1>
+          </div>
+          <div className="border border-yellow-300 bg-yellow-50 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-yellow-800 mb-2">
+              База данных недоступна
+            </h3>
+            <p className="text-yellow-700 mb-4">
+              Не удалось подключиться к базе данных. Пожалуйста, проверьте настройки подключения.
+            </p>
+            <p className="text-sm text-yellow-600">
+              {process.env.NODE_ENV === 'development' && error.message}
+            </p>
+          </div>
+        </div>
+      )
+    }
+    
+    // Для других ошибок пробрасываем дальше
+    throw error
+  }
 }

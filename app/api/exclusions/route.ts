@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 
+// Отключаем static generation для API route
+export const dynamic = 'force-dynamic'
+
 // GET - получить все исключения
 export async function GET() {
   try {
@@ -43,14 +46,14 @@ export async function GET() {
           SELECT 
             f.id,
             f.collection,
-            f.colorNumber,
-            f.excludedFromParsing,
-            s.id as supplierId,
-            s.name as supplierName
-          FROM Fabric f
-          INNER JOIN Supplier s ON f.supplierId = s.id
-          WHERE f.excludedFromParsing = 1
-          ORDER BY s.name ASC, f.collection ASC, f.colorNumber ASC
+            f."colorNumber",
+            f."excludedFromParsing",
+            s.id as "supplierId",
+            s.name as "supplierName"
+          FROM "Fabric" f
+          INNER JOIN "Supplier" s ON f."supplierId" = s.id
+          WHERE f."excludedFromParsing" = true
+          ORDER BY s.name ASC, f.collection ASC, f."colorNumber" ASC
         `
         
         excludedFabrics = rawResults.map(row => ({
@@ -297,11 +300,10 @@ export async function PATCH(request: NextRequest) {
           updatedCount++
         } catch (prismaError: any) {
           // Если Prisma не знает о поле, используем raw SQL
-          if (prismaError.message?.includes('excludedFromParsing') || prismaError.message?.includes('Unknown argument')) {
-            const value = excludedFromParsing ? 1 : 0
-            await prisma.$executeRaw`
-              UPDATE Fabric SET excludedFromParsing = ${value} WHERE id = ${fabricId}
-            `
+            if (prismaError.message?.includes('excludedFromParsing') || prismaError.message?.includes('Unknown argument')) {
+              await prisma.$executeRaw`
+                UPDATE "Fabric" SET "excludedFromParsing" = ${excludedFromParsing} WHERE id = ${fabricId}
+              `
             updatedCount++
           } else {
             throw prismaError

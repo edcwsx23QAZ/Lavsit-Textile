@@ -88,9 +88,9 @@ export class ArtvisionParser extends BaseParser {
 
     // Определяем заголовки
     const firstRow = sampleData[0] || []
-    const hasHeaders = firstRow.some(cell => 
-      ['коллекция', 'цвет', 'наличие', 'метраж', 'дата'].some(keyword => 
-        cell.toLowerCase().includes(keyword)
+    const hasHeaders = firstRow.some((cell: any) =>
+      ['коллекция', 'цвет', 'наличие', 'метраж', 'дата'].some(keyword =>
+        String(cell).toLowerCase().includes(keyword)
       )
     )
 

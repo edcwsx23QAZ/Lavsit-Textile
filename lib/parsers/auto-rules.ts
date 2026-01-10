@@ -218,7 +218,7 @@ export function createAutoRules(
     } else {
       // Если заголовки не определены автоматически, но есть строка с "Номенклатура"
       const firstRow = analysis.sampleData[0] || []
-      if (firstRow.some(cell => cell.toLowerCase().includes('номенклатура'))) {
+      if (firstRow.some((cell: any) => String(cell).toLowerCase().includes('номенклатура'))) {
         rules.skipRows = [1, 2]
         rules.headerRow = 1
       }

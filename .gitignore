@@ -55,3 +55,7 @@ parsing-rules/
 # Parsed data files
 data/parsed
 data/email-attachments/
+
+.vercel
+.env*.local
+.vercel-token

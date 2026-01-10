@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 
+// Отключаем static generation для API route
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     // Убеждаемся, что Viptextil существует

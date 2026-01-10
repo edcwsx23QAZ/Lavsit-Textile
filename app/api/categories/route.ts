@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { DEFAULT_CATEGORIES } from '@/lib/fabric-categories'
 
+// Отключаем static generation для API route
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     // Прямая загрузка категорий из БД
