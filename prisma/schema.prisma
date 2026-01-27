@@ -7,22 +7,23 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = "file:./dev.db?journal_mode=WAL&busy_timeout=5000&synchronous=NORMAL&cache_size=-2000"
 }
 
 model Supplier {
-  id            String    @id @default(cuid())
-  name          String    @unique
-  websiteUrl    String
-  parsingMethod String // "html" | "excel" | "email"
-  parsingUrl    String
-  emailConfig   String? // JSON string with email settings
-  fabricsCount  Int       @default(0)
-  lastUpdatedAt DateTime?
-  status        String    @default("active") // "active" | "error"
-  errorMessage  String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  name               String    @unique
+  websiteUrl         String
+  parsingMethod      String // "html" | "excel" | "email"
+  parsingUrl         String
+  emailConfig        String? // JSON string with email settings
+  fabricsCount       Int       @default(0) // Общее количество тканей в БД
+  lastParsedCount    Int?      // Количество тканей, спарсенных в последний раз
+  lastUpdatedAt      DateTime?
+  status             String    @default("active") // "active" | "error"
+  errorMessage       String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   fabrics          Fabric[]
   parsingRules     ParsingRule?
