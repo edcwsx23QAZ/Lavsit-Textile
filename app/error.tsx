@@ -7,11 +7,24 @@ export default function Error({
   error: Error & { digest?: string }
   reset: () => void
 }) {
-  const isDev = process.env.NODE_ENV === 'development'
+  // В production показываем детали ошибки для диагностики
+  const showErrorDetails = true // Показываем детали даже в production для диагностики
+  
   const isDatabaseError = 
+    error.code === 'P1001' ||
+    error.code === 'P1000' ||
+    error.code === 'P1017' ||
+    error.code === 'P1003' ||
+    error.code === 'P1011' ||
     error.message?.includes('Can\'t reach database') ||
     error.message?.includes('P1001') ||
-    error.message?.includes('database')
+    error.message?.includes('P1000') ||
+    error.message?.includes('database') ||
+    error.message?.includes('Connection') ||
+    error.message?.includes('Tenant or user not found') ||
+    error.message?.includes('database string is invalid') ||
+    error.message?.includes('Server Components render') ||
+    error.digest
 
   return (
     <div className="container mx-auto p-6">
@@ -33,12 +46,13 @@ export default function Error({
           </div>
         )}
 
-        {isDev && (
+        {showErrorDetails && (
           <div className="mb-4">
-            <p className="text-sm font-semibold text-red-700 mb-2">Детали ошибки (development):</p>
-            <pre className="text-xs bg-red-100 p-3 rounded overflow-auto text-red-900">
+            <p className="text-sm font-semibold text-red-700 mb-2">Детали ошибки:</p>
+            <pre className="text-xs bg-red-100 p-3 rounded overflow-auto text-red-900 max-h-96">
               {error.message || 'Неизвестная ошибка'}
-              {error.digest && `\nDigest: ${error.digest}`}
+              {error.digest && `\n\nDigest: ${error.digest}`}
+              {error.code && `\nCode: ${error.code}`}
               {error.stack && `\n\nStack:\n${error.stack}`}
             </pre>
           </div>

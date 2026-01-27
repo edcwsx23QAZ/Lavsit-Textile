@@ -17,7 +17,7 @@ model Supplier {
   parsingMethod      String // "html" | "excel" | "email"
   parsingUrl         String
   emailConfig        String? // JSON string with email settings
-  fabricsCount       Int       @default(0) // Общее количество тканей в БД
+  fabricsCount       Int       @default(0)
   lastParsedCount    Int?      // Количество тканей, спарсенных в последний раз
   lastUpdatedAt      DateTime?
   status             String    @default("active") // "active" | "error"
