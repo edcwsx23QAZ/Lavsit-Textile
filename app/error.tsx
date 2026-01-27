@@ -1,21 +1,27 @@
 'use client'
 
+interface ErrorWithCode extends Error {
+  digest?: string
+  code?: string
+}
+
 export default function Error({
   error,
   reset,
 }: {
-  error: Error & { digest?: string; code?: string }
+  error: ErrorWithCode
   reset: () => void
 }) {
   // В production показываем детали ошибки для диагностики
   const showErrorDetails = true // Показываем детали даже в production для диагностики
   
+  const errorCode = error.code
   const isDatabaseError = 
-    (error as any).code === 'P1001' ||
-    (error as any).code === 'P1000' ||
-    (error as any).code === 'P1017' ||
-    (error as any).code === 'P1003' ||
-    (error as any).code === 'P1011' ||
+    errorCode === 'P1001' ||
+    errorCode === 'P1000' ||
+    errorCode === 'P1017' ||
+    errorCode === 'P1003' ||
+    errorCode === 'P1011' ||
     error.message?.includes('Can\'t reach database') ||
     error.message?.includes('P1001') ||
     error.message?.includes('P1000') ||
@@ -52,7 +58,7 @@ export default function Error({
             <pre className="text-xs bg-red-100 p-3 rounded overflow-auto text-red-900 max-h-96">
               {error.message || 'Неизвестная ошибка'}
               {error.digest && `\n\nDigest: ${error.digest}`}
-              {(error as any).code && `\nCode: ${(error as any).code}`}
+              {errorCode && `\nCode: ${errorCode}`}
               {error.stack && `\n\nStack:\n${error.stack}`}
             </pre>
           </div>
@@ -76,7 +82,3 @@ export default function Error({
     </div>
   )
 }
-
-
-
-
