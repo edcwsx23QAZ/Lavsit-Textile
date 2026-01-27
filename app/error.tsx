@@ -1,21 +1,17 @@
 'use client'
 
-interface ErrorWithCode extends Error {
-  digest?: string
-  code?: string
-}
-
 export default function Error({
   error,
   reset,
 }: {
-  error: ErrorWithCode
+  error: Error & { digest?: string }
   reset: () => void
 }) {
   // В production показываем детали ошибки для диагностики
   const showErrorDetails = true // Показываем детали даже в production для диагностики
   
-  const errorCode = error.code
+  // Безопасное получение кода ошибки
+  const errorCode = 'code' in error ? (error as any).code : undefined
   const isDatabaseError = 
     errorCode === 'P1001' ||
     errorCode === 'P1000' ||
