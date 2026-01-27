@@ -6,13 +6,8 @@ generator client {
 }
 
 datasource db {
-<<<<<<< HEAD
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-=======
   provider = "sqlite"
   url      = "file:./dev.db?journal_mode=WAL&busy_timeout=5000&synchronous=NORMAL&cache_size=-2000"
->>>>>>> restore-working-version
 }
 
 model Supplier {
