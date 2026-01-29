@@ -239,6 +239,8 @@ export class AmetistParser extends BaseParser {
       defval: '', 
       raw: true,
     }) as any[][]
+    
+    console.log(`[AmetistParser] Excel file loaded: ${sheetName}, total rows: ${data.length}`)
 
     const fabrics: ParsedFabric[] = []
 
