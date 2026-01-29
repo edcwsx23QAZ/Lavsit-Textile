@@ -176,9 +176,30 @@ export class AmetistParser extends BaseParser {
    * Парсинг из Buffer
    */
   async parseFromBuffer(buffer: Buffer, filename: string): Promise<ParsedFabric[]> {
-    const rules = await this.loadRules()
+    let rules = await this.loadRules()
+    
+    // Если правил нет, создаем по умолчанию
     if (!rules) {
-      throw new Error('Правила парсинга не установлены. Сначала проведите анализ.')
+      console.log(`[AmetistParser] ⚠️ Правила парсинга не найдены. Создание правил по умолчанию...`)
+      
+      const defaultRules: ParsingRules = {
+        columnMappings: {
+          collection: 2, // C = индекс 2
+          color: 4, // E = индекс 4
+          inStock: 6, // G = индекс 6
+          meterage: 6, // G = индекс 6
+          nextArrivalDate: 9, // J = индекс 9
+        },
+        skipRows: [1, 2], // Пропускаем строки 1 и 2 (служебная информация)
+        headerRow: 2, // Строка 3 (индекс 2) содержит заголовки
+        specialRules: {
+          ametistColorPattern: true,
+        },
+      }
+      
+      await this.saveRules(defaultRules)
+      console.log(`[AmetistParser] ✅ Правила по умолчанию сохранены`)
+      rules = defaultRules
     }
 
     console.log(`[AmetistParser] Parsing file: ${filename} (${buffer.length} bytes)`)
