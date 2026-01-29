@@ -32,7 +32,11 @@ export async function POST(
       
       if (!supplier.emailConfig) {
         return NextResponse.json(
-          { error: 'Email configuration not found' },
+          { 
+            error: `Email configuration not found for ${supplier.name}. Please configure email settings first.`,
+            details: `Use POST /api/suppliers/${supplier.id}/email-config to set up email configuration. Required fields: host, port, user, password, fromEmail (optional), subjectFilter (optional).`,
+            endpoint: `/api/suppliers/${supplier.id}/email-config`
+          },
           { status: 400 }
         )
       }
@@ -217,18 +221,137 @@ export async function POST(
           where: { supplierId: supplier.id },
         })
         
-        let message: string
+        // Если файлов нет в БД, автоматически пытаемся запустить parse-email
         if (totalAttachments === 0) {
-          message = `No email attachments found in database. Please run "Check Email" (parse-email endpoint) first to fetch emails from the mailbox.`
-        } else {
-          message = `No email attachments found. Total attachments in DB: ${totalAttachments}. Please run "Check Email" to fetch new emails.`
+          console.log(`[parse] ⚠️ No email attachments in database. Automatically running "Check Email" to fetch emails...`)
+          
+          try {
+            // Импортируем и вызываем логику parse-email напрямую
+            const { EmailParser } = await import('@/lib/email/email-parser')
+            const parseEmailParser = new EmailParser(emailConfig)
+            await parseEmailParser.connect()
+            
+            try {
+              // Получаем период поиска из конфигурации
+              const searchDays = emailConfig.searchDays || 90
+              const since = new Date()
+              since.setDate(since.getDate() - searchDays)
+              
+              console.log(`[parse] [auto-check-email] Searching emails from last ${searchDays} days (since ${since.toISOString()})`)
+              
+              // Получаем новые письма
+              const emails = await parseEmailParser.fetchNewEmails(supplier.id, since)
+              console.log(`[parse] [auto-check-email] Found ${emails.length} email(s) matching criteria`)
+              
+              if (emails.length > 0) {
+                // Сортируем письма по дате (от новых к старым)
+                const sortedEmails = [...emails].sort((a, b) => {
+                  const dateA = a.date || new Date(0)
+                  const dateB = b.date || new Date(0)
+                  return dateB.getTime() - dateA.getTime()
+                })
+                
+                // Ищем письмо с валидным Excel вложением
+                let latestEmail: any = null
+                let validAttachment: any = null
+                
+                for (const email of sortedEmails) {
+                  const attachments = parseEmailParser.extractExcelAttachments(email)
+                  if (attachments.length > 0) {
+                    // Проверяем валидность первого вложения
+                    const tempFilePath = await parseEmailParser.saveAttachment(
+                      supplier.id,
+                      email,
+                      attachments[0],
+                      true // skipDatabase = true
+                    )
+                    
+                    // Валидация файла - используем правильный парсер в зависимости от поставщика
+                    let isValid = false
+                    if (supplier.name === 'Аметист') {
+                      const { AmetistParser } = await import('@/lib/parsers/ametist-parser')
+                      const validator = new AmetistParser(supplier.id, supplier.name)
+                      isValid = await validator.validateFile(tempFilePath)
+                    } else {
+                      const { EmailExcelParser } = await import('@/lib/parsers/email-excel-parser')
+                      const validator = new EmailExcelParser(supplier.id, supplier.name)
+                      isValid = await validator.validateFile(tempFilePath)
+                    }
+                    
+                    if (isValid) {
+                      latestEmail = email
+                      validAttachment = attachments[0]
+                      // Удаляем временный файл
+                      if (fs.existsSync(tempFilePath)) {
+                        fs.unlinkSync(tempFilePath)
+                      }
+                      break
+                    } else {
+                      // Удаляем невалидный файл
+                      if (fs.existsSync(tempFilePath)) {
+                        fs.unlinkSync(tempFilePath)
+                      }
+                    }
+                  }
+                }
+                
+                if (latestEmail && validAttachment) {
+                  // Сохраняем вложение в БД
+                  const filePath = await parseEmailParser.saveAttachment(
+                    supplier.id,
+                    latestEmail,
+                    validAttachment
+                  )
+                  
+                  console.log(`[parse] [auto-check-email] ✅ Successfully fetched new email attachment: ${validAttachment.filename}`)
+                  
+                  // Теперь пытаемся получить файлы снова
+                  unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id, true)
+                  console.log(`[parse] [auto-check-email] Found ${unprocessedFiles.length} file(s) after auto-check-email`)
+                  
+                  if (unprocessedFiles.length === 0) {
+                    console.log(`[parse] [auto-check-email] ⚠️ Still no files found after auto-check-email`)
+                  }
+                } else {
+                  console.log(`[parse] [auto-check-email] ⚠️ No valid Excel attachments found in emails`)
+                }
+              } else {
+                console.log(`[parse] [auto-check-email] ⚠️ No emails found matching criteria`)
+              }
+            } finally {
+              await parseEmailParser.disconnect()
+            }
+          } catch (checkEmailError: any) {
+            console.error(`[parse] [auto-check-email] Error during auto-check-email:`, checkEmailError)
+            // Не прерываем выполнение, продолжаем с ошибкой
+          }
         }
         
-        console.log(`[parse] ${message}`)
-        return NextResponse.json(
-          { error: message },
-          { status: 400 }
-        )
+        // Если после автоматической проверки файлы все еще не найдены
+        if (unprocessedFiles.length === 0) {
+          const totalAttachmentsAfter = await prisma.emailAttachment.count({
+            where: { supplierId: supplier.id },
+          })
+          
+          let message: string
+          if (totalAttachmentsAfter === 0) {
+            message = `No email attachments found. Automatically attempted to fetch emails but found none. Please check:\n1. Email configuration is correct (use /api/suppliers/${supplier.id}/email-config)\n2. Email account has access to incoming emails\n3. Emails from the supplier exist in the mailbox\n4. Email filters (fromEmail, subjectFilter) are correct`
+          } else {
+            const processedCount = await prisma.emailAttachment.count({
+              where: { 
+                supplierId: supplier.id,
+                processed: true,
+              },
+            })
+            message = `No unprocessed email attachments found. Total attachments in DB: ${totalAttachmentsAfter}, processed: ${processedCount}. Please run "Check Email" (POST /api/suppliers/${supplier.id}/parse-email) to fetch new emails or enable "Use any latest attachment" in email settings.`
+          }
+          
+          console.log(`[parse] ${message}`)
+          return NextResponse.json(
+            { error: message },
+            { status: 400 }
+          )
+        }
       }
 
       // Use the most recent file
@@ -319,10 +442,31 @@ export async function POST(
         console.log(`[parse] Правила автоматически созданы для ${supplier.name}`)
       } catch (analysisError: any) {
         console.error(`[parse] Ошибка анализа для ${supplier.name}:`, analysisError)
+        
+        // Более детальное сообщение об ошибке
+        let errorMessage = 'Не удалось автоматически создать правила парсинга. '
+        let suggestion = ''
+        
+        if (analysisError.message?.includes('timeout') || analysisError.message?.includes('ECONNABORTED')) {
+          errorMessage += 'Превышено время ожидания при загрузке файла.'
+          suggestion = 'Проверьте доступность URL и скорость интернет-соединения.'
+        } else if (analysisError.message?.includes('404') || analysisError.message?.includes('not found')) {
+          errorMessage += 'Файл не найден по указанному URL.'
+          suggestion = 'Проверьте правильность URL в настройках поставщика. Возможно, файл был перемещен или удален.'
+        } else if (analysisError.message?.includes('parse') || analysisError.message?.includes('invalid')) {
+          errorMessage += 'Не удалось распарсить файл.'
+          suggestion = 'Возможно, изменилась структура файла. Проведите анализ вручную через /api/suppliers/' + supplier.id + '/analyze'
+        } else {
+          errorMessage += analysisError.message || 'Неизвестная ошибка.'
+          suggestion = 'Проведите анализ вручную через /api/suppliers/' + supplier.id + '/analyze'
+        }
+        
         return NextResponse.json(
           { 
-            error: 'Не удалось автоматически создать правила парсинга. Проведите анализ вручную.',
-            details: analysisError.message 
+            error: errorMessage,
+            suggestion: suggestion,
+            details: analysisError.message,
+            endpoint: `/api/suppliers/${supplier.id}/analyze`
           },
           { status: 400 }
         )
