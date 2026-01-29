@@ -284,3 +284,5 @@ curl https://lavsit-textile.vercel.app/api/test-db
 
 **Готово!** После настройки всех переменных окружения проект должен корректно работать на Vercel с базой данных Supabase. 🚀
 
+
+

@@ -197,3 +197,5 @@ vercel logs https://lavsit-textile.vercel.app --token [YOUR_TOKEN]
 
 **После исправления всех пунктов чеклиста, база данных должна подключиться успешно!** 🚀
 
+
+

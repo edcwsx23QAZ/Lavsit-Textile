@@ -1,0 +1,11 @@
+# Переменные окружения для Vercel
+# Скопируйте эти значения в Vercel Dashboard → Settings → Environment Variables
+
+NEXT_PUBLIC_SUPABASE_URL=https://hduadapicktrcrqjvzvd.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_ilEL1_gyNIxzQCskLJtjNA_2a1iArsq
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_NmrKSfz9rwXqnrD8TEkQlA_5dm3YIkp
+DATABASE_URL=postgresql://postgres.hduadapicktrcrqjvzvd:edcwsx123QA@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true&schema=public&connect_timeout=30&pool_timeout=30&sslmode=require
+DATABASE_PASSWORD=edcwsx123QA
+
+
+

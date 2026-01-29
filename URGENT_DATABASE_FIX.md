@@ -147,3 +147,5 @@ curl https://lavsit-textile.vercel.app/api/test-db
 
 **После исправления DATABASE_URL база данных должна подключиться!** 🚀
 
+
+

@@ -43,29 +43,46 @@ export default async function PalettePage() {
   } catch (error: any) {
     console.error('[PalettePage] Error:', error)
     
-    // Если база данных недоступна, показываем сообщение
-    if (error.code === 'P1001' || error.message?.includes('Can\'t reach database')) {
-      return (
-        <div className="container mx-auto p-6">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold mb-2">Палитра цветов</h1>
-          </div>
-          <div className="border border-yellow-300 bg-yellow-50 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-yellow-800 mb-2">
-              База данных недоступна
-            </h3>
-            <p className="text-yellow-700 mb-4">
-              Не удалось подключиться к базе данных. Пожалуйста, проверьте настройки подключения.
-            </p>
-            <p className="text-sm text-yellow-600">
-              {process.env.NODE_ENV === 'development' && error.message}
-            </p>
-          </div>
-        </div>
-      )
-    }
+    // Проверяем различные коды ошибок Prisma
+    const errorCode = error?.code || error?.meta?.code
+    const isDatabaseError = 
+      errorCode === 'P1001' || // Can't reach database server
+      errorCode === 'P1000' || // Authentication failed
+      errorCode === 'P1003' || // Database does not exist
+      errorCode === 'P1011' || // TLS connection error
+      errorCode === 'P1017' || // Server has closed the connection
+      error?.message?.includes('Can\'t reach database') ||
+      error?.message?.includes('P1001') ||
+      error?.message?.includes('P1000') ||
+      error?.message?.includes('database') ||
+      error?.message?.includes('Connection') ||
+      error?.message?.includes('PrismaClient') ||
+      error?.message?.includes('Invalid `prisma') ||
+      error?.message?.includes('Unknown database')
     
-    // Для других ошибок пробрасываем дальше
-    throw error
+    // Всегда показываем fallback UI вместо проброса ошибки
+    return (
+      <div className="container mx-auto p-6">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold mb-2">Палитра цветов</h1>
+        </div>
+        <div className={`border rounded-lg p-4 ${isDatabaseError ? 'border-yellow-300 bg-yellow-50' : 'border-red-300 bg-red-50'}`}>
+          <h3 className={`text-lg font-semibold mb-2 ${isDatabaseError ? 'text-yellow-800' : 'text-red-800'}`}>
+            {isDatabaseError ? 'База данных недоступна' : 'Ошибка загрузки данных'}
+          </h3>
+          <p className={`mb-4 ${isDatabaseError ? 'text-yellow-700' : 'text-red-700'}`}>
+            {isDatabaseError 
+              ? 'Не удалось подключиться к базе данных. Пожалуйста, проверьте настройки подключения.'
+              : 'Произошла ошибка при загрузке данных. Пожалуйста, попробуйте обновить страницу.'}
+          </p>
+          {(process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development') && (
+            <p className={`text-sm ${isDatabaseError ? 'text-yellow-600' : 'text-red-600'}`}>
+              {error?.message || 'Неизвестная ошибка'}
+              {errorCode && ` (Код: ${errorCode})`}
+            </p>
+          )}
+        </div>
+      </div>
+    )
   }
 }

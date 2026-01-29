@@ -140,3 +140,5 @@ postgresql://postgres.hduadapicktrcrqjvzvd:[PASSWORD]@aws-0-us-east-1.pooler.sup
 
 **После исправления DATABASE_URL база данных должна подключиться успешно!** ✅
 
+
+

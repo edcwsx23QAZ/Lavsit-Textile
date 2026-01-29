@@ -30,7 +30,10 @@
     "secrets:setup": "powershell -ExecutionPolicy Bypass -File scripts/auto-setup-secrets.ps1",
     "secrets:setup-dry": "powershell -ExecutionPolicy Bypass -File scripts/auto-setup-secrets.ps1 -DryRun",
     "secrets:github-only": "powershell -ExecutionPolicy Bypass -File scripts/auto-setup-secrets.ps1 -GitHubOnly",
-    "secrets:vercel-only": "powershell -ExecutionPolicy Bypass -File scripts/auto-setup-secrets.ps1 -VercelOnly"
+    "secrets:vercel-only": "powershell -ExecutionPolicy Bypass -File scripts/auto-setup-secrets.ps1 -VercelOnly",
+    "vercel:check-env": "tsx scripts/check-vercel-env.ts",
+    "vercel:verify": "tsx scripts/verify-vercel-setup.ts",
+    "vercel:setup-env": "tsx scripts/setup-vercel-env.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

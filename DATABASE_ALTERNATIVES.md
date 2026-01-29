@@ -240,3 +240,5 @@ curl https://lavsit-textile.vercel.app/api/test-db
 
 **Вывод:** Для продакшена на Vercel используйте PostgreSQL (Vercel Postgres, Supabase, Neon и т.д.). SQLite можно использовать только для локальной разработки.
 
+
+
