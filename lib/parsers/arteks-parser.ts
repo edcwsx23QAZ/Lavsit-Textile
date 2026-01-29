@@ -77,19 +77,35 @@ export class ArteksParser extends BaseParser {
       url = url.replace(/\/\d{4}\/\d{2}\//, `/${year}/${month}/`)
       
       try {
+        console.log(`[Arteks] Пробуем скачать файл: ${url}`)
         const response = await axios.get(url, { 
           responseType: 'arraybuffer',
-          timeout: 10000,
+          timeout: 15000, // Увеличено время ожидания
           validateStatus: (status) => status === 200,
         })
-        console.log(`[Arteks] Успешно скачан файл с датой: ${dateStr}`)
+        console.log(`[Arteks] ✅ Успешно скачан файл с датой: ${dateStr} (URL: ${url})`)
         return Buffer.from(response.data as ArrayBuffer)
       } catch (error: any) {
         if (error.response?.status === 404) {
-          console.log(`[Arteks] Файл не найден для даты: ${dateStr}, пробуем следующую...`)
+          console.log(`[Arteks] Файл не найден для даты: ${dateStr} (URL: ${url}), пробуем следующую...`)
           continue
         }
-        throw error
+        // Логируем другие ошибки для диагностики
+        if (error.code === 'ECONNABORTED') {
+          console.log(`[Arteks] ⚠️ Timeout при скачивании файла для даты: ${dateStr} (URL: ${url})`)
+          continue
+        }
+        if (error.response?.status) {
+          console.log(`[Arteks] ⚠️ Ошибка ${error.response.status} при скачивании файла для даты: ${dateStr} (URL: ${url})`)
+          continue
+        }
+        console.log(`[Arteks] ⚠️ Ошибка при скачивании файла для даты: ${dateStr} (URL: ${url}): ${error.message}`)
+        // Для сетевых ошибок продолжаем поиск
+        if (error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') {
+          continue
+        }
+        // Для других ошибок тоже продолжаем (может быть временная проблема)
+        continue
       }
     }
     

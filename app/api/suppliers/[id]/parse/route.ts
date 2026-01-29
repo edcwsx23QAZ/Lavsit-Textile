@@ -67,10 +67,11 @@ export async function POST(
       
       // Get attachments - use any latest if configured, otherwise only unprocessed
       // Для Нортекса и других email-поставщиков автоматически используем последнее вложение, если нет необработанных
+      // ВАЖНО: Если useAnyLatestAttachment включен, используем последнее вложение (даже обработанное)
       const useAnyLatest = emailConfig.useAnyLatestAttachment === true
       console.log(`[parse] useAnyLatestAttachment from config: ${emailConfig.useAnyLatestAttachment}, useAnyLatest: ${useAnyLatest}`)
       
-      // Сначала пытаемся получить необработанные вложения
+      // Сначала пытаемся получить вложения (необработанные или последние, в зависимости от настройки)
       let unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id, useAnyLatest)
       console.log(`[parse] Found ${unprocessedFiles.length} file(s) after getUnprocessedAttachments (useAnyLatest=${useAnyLatest})`)
       
