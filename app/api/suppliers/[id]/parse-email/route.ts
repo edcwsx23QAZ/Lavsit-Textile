@@ -89,11 +89,11 @@ export async function POST(
       console.log(`[parse-email] Filters: fromEmail=${emailConfig.fromEmail || 'none'}, subjectFilter=${emailConfig.subjectFilter || 'none'}, unreadOnly=${emailConfig.searchUnreadOnly !== false}`)
       console.log(`[parse-email] Full email config:`, JSON.stringify(emailConfig, null, 2))
 
-      const emails = await emailParser.fetchNewEmails(supplier.id, since)
+      let emails = await emailParser.fetchNewEmails(supplier.id, since)
       console.log(`[parse-email] Found ${emails.length} email(s) matching criteria`)
       
       // Сортируем письма по дате (от новых к старым) для корректного выбора последнего
-      const sortedEmails = [...emails].sort((a, b) => {
+      let sortedEmails = [...emails].sort((a, b) => {
         const dateA = a.date || new Date(0)
         const dateB = b.date || new Date(0)
         return dateB.getTime() - dateA.getTime() // Сортировка по убыванию (последнее письмо первым)
@@ -147,11 +147,15 @@ export async function POST(
             
             if (filteredEmails.length > 0) {
               console.log(`[parse-email] ✅ Found ${filteredEmails.length} email(s) after manual filtering`)
+              // Обновляем sortedEmails с отфильтрованными письмами
               sortedEmails = [...filteredEmails].sort((a, b) => {
                 const dateA = a.date || new Date(0)
                 const dateB = b.date || new Date(0)
                 return dateB.getTime() - dateA.getTime()
               })
+            } else {
+              // Если после фильтрации ничего не осталось, обновляем sortedEmails на пустой массив
+              sortedEmails = []
             } else {
               console.log(`[parse-email] ⚠️ No emails match filters even after manual filtering`)
             }
