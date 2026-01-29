@@ -14,6 +14,7 @@
     "db:studio": "prisma studio",
     "db:init": "tsx scripts/init-suppliers.ts",
     "db:fix-arteks": "tsx scripts/update-arteks-url.ts",
+    "check:email-configs": "tsx scripts/check-email-configs.ts",
     "test:noframes": "tsx scripts/test-noframes.ts",
     "test:noframes-data": "tsx scripts/test-noframes-data.ts",
     "test:noframes-full": "tsx scripts/test-noframes-full.ts",
