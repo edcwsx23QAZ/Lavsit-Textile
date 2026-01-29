@@ -93,6 +93,9 @@ export class AmetistParser extends BaseParser {
           // Возвращаем первое найденное вложение
           const attachment = attachments[0]
           console.log(`[AmetistParser] Found attachment: ${attachment.filename} (${attachment.size || attachment.content.length} bytes)`)
+          console.log(`[AmetistParser] Email date: ${email.date ? new Date(email.date).toISOString() : 'unknown'}`)
+          console.log(`[AmetistParser] Email subject: ${email.subject || 'unknown'}`)
+          console.log(`[AmetistParser] Email from: ${email.from || 'unknown'}`)
           return attachment
         }
       }
@@ -203,6 +206,7 @@ export class AmetistParser extends BaseParser {
     }
 
     console.log(`[AmetistParser] Parsing file: ${filename} (${buffer.length} bytes)`)
+    console.log(`[AmetistParser] File hash (first 16 bytes): ${buffer.slice(0, 16).toString('hex')}`)
 
     let excelBuffer: Buffer
 
@@ -249,6 +253,13 @@ export class AmetistParser extends BaseParser {
 
     // Пропускаем строки согласно правилам
     const startRow = rules.headerRow ? rules.headerRow + 1 : 1
+    
+    console.log(`[AmetistParser] Начало парсинга: всего строк ${data.length}, начинаем со строки ${startRow + 1}`)
+
+    let processedCount = 0
+    let skippedCount = 0
+    let emptyCollectionCount = 0
+    let emptyColorCount = 0
 
     for (let i = startRow; i < data.length; i++) {
       const row = data[i]
@@ -256,6 +267,7 @@ export class AmetistParser extends BaseParser {
 
       // Пропускаем строки согласно правилам
       if (rules.skipRows?.includes(rowNumber)) {
+        skippedCount++
         continue
       }
 
@@ -263,13 +275,26 @@ export class AmetistParser extends BaseParser {
       const collectionCol = rules.columnMappings.collection ?? 2
       const collection = row[collectionCol]?.toString().trim() || ''
 
-      if (!collection) continue
+      if (!collection) {
+        emptyCollectionCount++
+        continue
+      }
 
       // Колонка E (индекс 4) - цвет
       const colorCol = rules.columnMappings.color ?? 4
       let color = row[colorCol]?.toString().trim() || ''
 
-      if (!color) continue
+      if (!color) {
+        emptyColorCount++
+        continue
+      }
+      
+      processedCount++
+      
+      // Логируем каждые 100 обработанных строк
+      if (processedCount % 100 === 0) {
+        console.log(`[AmetistParser] Обработано ${processedCount} тканей (строка ${rowNumber})...`)
+      }
 
       // Колонка G (индекс 6) - метраж (точные значения)
       const meterageCol = rules.columnMappings.meterage ?? rules.columnMappings.inStock ?? 6
@@ -405,7 +430,19 @@ export class AmetistParser extends BaseParser {
       fabrics.push(fabric)
     }
 
-      console.log(`[AmetistParser] Parsed ${fabrics.length} fabrics`)
+    console.log(`[AmetistParser] Парсинг завершен:`)
+    console.log(`[AmetistParser]   Всего строк в файле: ${data.length}`)
+    console.log(`[AmetistParser]   Пропущено по skipRows: ${skippedCount}`)
+    console.log(`[AmetistParser]   Пропущено (нет коллекции): ${emptyCollectionCount}`)
+    console.log(`[AmetistParser]   Пропущено (нет цвета): ${emptyColorCount}`)
+    console.log(`[AmetistParser]   Обработано валидных строк: ${processedCount}`)
+    console.log(`[AmetistParser]   Создано тканей: ${fabrics.length}`)
+    
+    if (fabrics.length !== processedCount) {
+      console.log(`[AmetistParser] ⚠️ ВНИМАНИЕ: Обработано ${processedCount} строк, но создано только ${fabrics.length} тканей!`)
+    }
+    
+    console.log(`[AmetistParser] Parsed ${fabrics.length} fabrics`)
     return fabrics
   }
 
