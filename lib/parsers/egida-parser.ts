@@ -5,12 +5,13 @@ import { validateDate } from '@/lib/date-validation'
 
 export class EgidaParser extends BaseParser {
   /**
-   * Форматирует дату в формат DD.MM.YY для URL Эгида
+   * Форматирует дату в формат DD.MM.YYYY для URL Эгида
+   * Обновлено: теперь используется полный год (YYYY) вместо 2-значного (YY)
    */
   private formatDateForUrl(date: Date): string {
     const day = String(date.getDate()).padStart(2, '0')
     const month = String(date.getMonth() + 1).padStart(2, '0')
-    const year = String(date.getFullYear()).slice(-2)
+    const year = date.getFullYear() // Полный год (2026 вместо 26)
     return `${day}.${month}.${year}`
   }
 

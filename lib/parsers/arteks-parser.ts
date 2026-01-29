@@ -41,16 +41,26 @@ export class ArteksParser extends BaseParser {
       const year = date.getFullYear()
       
       const dateStr = `${day}.${month}.${year}`
-      // Заменяем дату в URL (формат: DD.MM.YYYY-2.xlsx)
-      // Ищем паттерн даты или плейсхолдер и заменяем его
+      // Заменяем дату в URL (формат: /YYYY/MM/DD.MM.YYYY-1.xlsx)
+      // Новый формат: https://artextkani.ru/wp-content/uploads/2026/01/28.01.2026-1.xlsx
       let url = baseUrl
-      // Сначала пробуем заменить плейсхолдер DD.MM.YYYY
+      
+      // Заменяем плейсхолдеры в пути
+      if (url.includes('YYYY')) {
+        url = url.replace(/YYYY/g, String(year))
+      }
+      if (url.includes('MM')) {
+        url = url.replace(/MM/g, month)
+      }
       if (url.includes('DD.MM.YYYY')) {
         url = url.replace('DD.MM.YYYY', dateStr)
       } else {
-        // Иначе ищем существующую дату и заменяем её
-        url = url.replace(/\d{2}\.\d{2}\.\d{4}-\d+\.xlsx/, `${dateStr}-2.xlsx`)
+        // Ищем существующую дату в формате DD.MM.YYYY-1.xlsx и заменяем её
+        url = url.replace(/\d{2}\.\d{2}\.\d{4}-\d+\.xlsx/, `${dateStr}-1.xlsx`)
       }
+      
+      // Также заменяем дату в пути, если она есть в формате /YYYY/MM/
+      url = url.replace(/\/\d{4}\/\d{2}\//, `/${year}/${month}/`)
       
       try {
         const response = await axios.get(url, { 

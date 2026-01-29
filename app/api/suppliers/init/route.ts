@@ -27,7 +27,7 @@ const SUPPLIERS = [
     name: 'Артекс',
     websiteUrl: 'https://artextkani.ru',
     parsingMethod: 'excel',
-    parsingUrl: 'https://artextkani.ru/wp-content/uploads/DD.MM.YYYY-2.xlsx', // Парсер сам найдет актуальную дату
+    parsingUrl: 'https://artextkani.ru/wp-content/uploads/YYYY/MM/DD.MM.YYYY-1.xlsx', // Парсер сам найдет актуальную дату. Формат: /2026/01/28.01.2026-1.xlsx
   },
   {
     name: 'TextileData',
