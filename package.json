@@ -13,6 +13,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:init": "tsx scripts/init-suppliers.ts",
+    "db:fix-arteks": "tsx scripts/update-arteks-url.ts",
     "test:noframes": "tsx scripts/test-noframes.ts",
     "test:noframes-data": "tsx scripts/test-noframes-data.ts",
     "test:noframes-full": "tsx scripts/test-noframes-full.ts",

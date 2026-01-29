@@ -116,8 +116,55 @@ export async function POST(
                 console.log(`[parse] [auto-check-email] Searching emails from last ${searchDays} days (since ${since.toISOString()})`)
                 
                 // Получаем новые письма
-                const emails = await parseEmailParser.fetchNewEmails(supplier.id, since)
+                let emails = await parseEmailParser.fetchNewEmails(supplier.id, since)
                 console.log(`[parse] [auto-check-email] Found ${emails.length} email(s) matching criteria`)
+                
+                // Если письма не найдены с фильтрами, пробуем без фильтров
+                if (emails.length === 0 && (emailConfig.fromEmail || emailConfig.subjectFilter)) {
+                  console.log(`[parse] [auto-check-email] ⚠️ No emails found with filters. Trying without filters...`)
+                  
+                  const emailConfigWithoutFilters = {
+                    ...emailConfig,
+                    fromEmail: undefined,
+                    subjectFilter: undefined,
+                  }
+                  
+                  const emailParserWithoutFilters = new EmailParser(emailConfigWithoutFilters)
+                  await emailParserWithoutFilters.connect()
+                  
+                  try {
+                    const emailsWithoutFilters = await emailParserWithoutFilters.fetchNewEmails(supplier.id, since)
+                    console.log(`[parse] [auto-check-email] Found ${emailsWithoutFilters.length} email(s) without filters`)
+                    
+                    if (emailsWithoutFilters.length > 0) {
+                      // Фильтруем письма вручную
+                      let filteredEmails = emailsWithoutFilters
+                      
+                      if (emailConfig.fromEmail) {
+                        filteredEmails = filteredEmails.filter(email => {
+                          const fromText = email.from?.text || email.from?.value?.[0]?.address || ''
+                          return fromText.toLowerCase().includes(emailConfig.fromEmail.toLowerCase())
+                        })
+                        console.log(`[parse] [auto-check-email] After manual fromEmail filter: ${filteredEmails.length} email(s)`)
+                      }
+                      
+                      if (emailConfig.subjectFilter && filteredEmails.length > 0) {
+                        filteredEmails = filteredEmails.filter(email => {
+                          const subject = email.subject || ''
+                          return subject.toLowerCase().includes(emailConfig.subjectFilter.toLowerCase())
+                        })
+                        console.log(`[parse] [auto-check-email] After manual subjectFilter: ${filteredEmails.length} email(s)`)
+                      }
+                      
+                      if (filteredEmails.length > 0) {
+                        emails = filteredEmails
+                        console.log(`[parse] [auto-check-email] ✅ Using ${emails.length} email(s) after manual filtering`)
+                      }
+                    }
+                  } finally {
+                    await emailParserWithoutFilters.disconnect()
+                  }
+                }
                 
                 if (emails.length > 0) {
                   // Сортируем письма по дате (от новых к старым)

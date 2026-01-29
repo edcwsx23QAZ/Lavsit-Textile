@@ -46,20 +46,34 @@ export class ArteksParser extends BaseParser {
       let url = baseUrl
       
       // Заменяем плейсхолдеры в пути
+      // Новый формат: https://artextkani.ru/wp-content/uploads/2026/01/28.01.2026-1.xlsx
+      // Плейсхолдеры: YYYY, MM, DD.MM.YYYY
+      
+      // Сначала заменяем YYYY в пути (год в папке)
       if (url.includes('YYYY')) {
         url = url.replace(/YYYY/g, String(year))
       }
+      
+      // Затем заменяем MM в пути (месяц в папке)
       if (url.includes('MM')) {
-        url = url.replace(/MM/g, month)
+        // Заменяем только MM в пути, но не в имени файла
+        // Формат: /YYYY/MM/DD.MM.YYYY-1.xlsx
+        url = url.replace(/\/(MM)\//, `/${month}/`)
+        // Если MM не в пути, а в другом месте, заменяем все вхождения
+        if (url.includes('MM')) {
+          url = url.replace(/MM/g, month)
+        }
       }
+      
+      // Заменяем дату в имени файла
       if (url.includes('DD.MM.YYYY')) {
         url = url.replace('DD.MM.YYYY', dateStr)
       } else {
-        // Ищем существующую дату в формате DD.MM.YYYY-1.xlsx и заменяем её
+        // Ищем существующую дату в формате DD.MM.YYYY-1.xlsx или DD.MM.YYYY-2.xlsx и заменяем её
         url = url.replace(/\d{2}\.\d{2}\.\d{4}-\d+\.xlsx/, `${dateStr}-1.xlsx`)
       }
       
-      // Также заменяем дату в пути, если она есть в формате /YYYY/MM/
+      // Также заменяем дату в пути, если она есть в формате /YYYY/MM/ (на случай если плейсхолдеры не сработали)
       url = url.replace(/\/\d{4}\/\d{2}\//, `/${year}/${month}/`)
       
       try {

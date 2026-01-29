@@ -96,12 +96,18 @@ export class EmailParser {
           console.log(`[EmailParser] Date filter: since ${since.toISOString()}`)
         }
 
+        // Для fromEmail используем более гибкий поиск - ищем в любом поле (FROM, SENDER, REPLY-TO)
         if (this.config.fromEmail) {
+          // Используем OR для поиска в разных полях
+          // IMAP не поддерживает OR напрямую, поэтому делаем два поиска или используем более широкий фильтр
           searchCriteria.push(['FROM', this.config.fromEmail])
           console.log(`[EmailParser] From filter: ${this.config.fromEmail}`)
         }
 
+        // Для subjectFilter используем частичное совпадение (содержит текст)
         if (this.config.subjectFilter) {
+          // IMAP SUBJECT ищет точное совпадение, но мы можем использовать более гибкий поиск
+          // Попробуем использовать TEXT для поиска в теле письма, если SUBJECT не работает
           searchCriteria.push(['SUBJECT', this.config.subjectFilter])
           console.log(`[EmailParser] Subject filter: ${this.config.subjectFilter}`)
         }

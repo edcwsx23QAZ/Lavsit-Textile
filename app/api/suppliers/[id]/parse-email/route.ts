@@ -107,6 +107,60 @@ export async function POST(
         })
       }
 
+      // Если письма не найдены с фильтрами, пробуем без фильтров (только по дате)
+      if (sortedEmails.length === 0 && (emailConfig.fromEmail || emailConfig.subjectFilter)) {
+        console.log(`[parse-email] ⚠️ No emails found with filters. Trying without filters (only by date)...`)
+        
+        // Создаем новую конфигурацию без фильтров
+        const emailConfigWithoutFilters = {
+          ...emailConfig,
+          fromEmail: undefined,
+          subjectFilter: undefined,
+        }
+        
+        const emailParserWithoutFilters = new EmailParser(emailConfigWithoutFilters)
+        await emailParserWithoutFilters.connect()
+        
+        try {
+          const emailsWithoutFilters = await emailParserWithoutFilters.fetchNewEmails(supplier.id, since)
+          console.log(`[parse-email] Found ${emailsWithoutFilters.length} email(s) without filters`)
+          
+          if (emailsWithoutFilters.length > 0) {
+            // Фильтруем письма вручную по fromEmail и subjectFilter
+            let filteredEmails = emailsWithoutFilters
+            
+            if (emailConfig.fromEmail) {
+              filteredEmails = filteredEmails.filter(email => {
+                const fromText = email.from?.text || email.from?.value?.[0]?.address || ''
+                return fromText.toLowerCase().includes(emailConfig.fromEmail.toLowerCase())
+              })
+              console.log(`[parse-email] After manual fromEmail filter: ${filteredEmails.length} email(s)`)
+            }
+            
+            if (emailConfig.subjectFilter && filteredEmails.length > 0) {
+              filteredEmails = filteredEmails.filter(email => {
+                const subject = email.subject || ''
+                return subject.toLowerCase().includes(emailConfig.subjectFilter.toLowerCase())
+              })
+              console.log(`[parse-email] After manual subjectFilter: ${filteredEmails.length} email(s)`)
+            }
+            
+            if (filteredEmails.length > 0) {
+              console.log(`[parse-email] ✅ Found ${filteredEmails.length} email(s) after manual filtering`)
+              sortedEmails = [...filteredEmails].sort((a, b) => {
+                const dateA = a.date || new Date(0)
+                const dateB = b.date || new Date(0)
+                return dateB.getTime() - dateA.getTime()
+              })
+            } else {
+              console.log(`[parse-email] ⚠️ No emails match filters even after manual filtering`)
+            }
+          }
+        } finally {
+          await emailParserWithoutFilters.disconnect()
+        }
+      }
+      
       if (sortedEmails.length === 0) {
         // Provide helpful message about why no emails were found
         const reasons: string[] = []
