@@ -75,8 +75,7 @@ export async function POST(
       let unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id, useAnyLatest)
       console.log(`[parse] Found ${unprocessedFiles.length} file(s) after getUnprocessedAttachments (useAnyLatest=${useAnyLatest})`)
       
-      // Если не найдено необработанных вложений, автоматически используем последнее обработанное
-      // Это позволяет повторно парсить данные из уже обработанных файлов
+      // Если не найдено вложений, проверяем ситуацию
       if (unprocessedFiles.length === 0) {
         console.log(`[parse] No attachments found with current settings, checking for any attachments...`)
         const totalAttachments = await prisma.emailAttachment.count({
@@ -84,13 +83,27 @@ export async function POST(
         })
         
         if (totalAttachments > 0) {
-          // Пробуем получить последнее вложение (обработанное или нет)
-          console.log(`[parse] Found ${totalAttachments} attachment(s) in DB, trying to use latest one (including processed)`)
-          unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id, true)
-          console.log(`[parse] Found ${unprocessedFiles.length} file(s) using latest attachment (including processed)`)
+          // Проверяем, существуют ли файлы на диске
+          const allAttachments = await prisma.emailAttachment.findMany({
+            where: { supplierId: supplier.id },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+            select: { filePath: true, processed: true },
+          })
           
-          if (unprocessedFiles.length > 0) {
-            console.log(`[parse] ✅ Using latest attachment for parsing (may be already processed)`)
+          const existingFiles = allAttachments.filter(att => {
+            const exists = fs.existsSync(att.filePath)
+            if (!exists) {
+              console.log(`[parse] ⚠️ File not found on disk: ${att.filePath}`)
+            }
+            return exists
+          })
+          
+          if (existingFiles.length > 0) {
+            // Есть файлы на диске - используем последний
+            console.log(`[parse] Found ${existingFiles.length} file(s) on disk, using latest one`)
+            unprocessedFiles = [existingFiles[0].filePath]
+            console.log(`[parse] ✅ Using latest file on disk: ${unprocessedFiles[0]}`)
           } else {
             // Файлы есть в БД, но не существуют на диске - автоматически запускаем Check Email
             const processedCount = await prisma.emailAttachment.count({
