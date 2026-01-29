@@ -34,6 +34,7 @@
     "vercel:check-env": "tsx scripts/check-vercel-env.ts",
     "vercel:verify": "tsx scripts/verify-vercel-setup.ts",
     "vercel:setup-env": "tsx scripts/setup-vercel-env.ts",
+    "vercel:status": "tsx scripts/check-deploy-status.ts",
     "db:test": "tsx scripts/test-db-connection.ts"
   },
   "dependencies": {
