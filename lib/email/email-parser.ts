@@ -233,10 +233,47 @@ export class EmailParser {
     attachment: EmailAttachment,
     skipDatabase?: boolean
   ): Promise<string> {
+    // На Vercel файловая система read-only, кроме /tmp
+    // Используем /tmp для временных файлов, если доступен, иначе process.cwd()
+    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV
+    const baseDir = isVercel ? '/tmp' : process.cwd()
+    
     // Create directory for email attachments
-    const attachmentsDir = path.join(process.cwd(), 'data', 'email-attachments', supplierId)
-    if (!fs.existsSync(attachmentsDir)) {
-      fs.mkdirSync(attachmentsDir, { recursive: true })
+    const attachmentsDir = path.join(baseDir, 'data', 'email-attachments', supplierId)
+    
+    try {
+      if (!fs.existsSync(attachmentsDir)) {
+        fs.mkdirSync(attachmentsDir, { recursive: true })
+      }
+    } catch (error: any) {
+      // Если не удалось создать директорию (например, на Vercel), используем /tmp напрямую
+      console.log(`[EmailParser] ⚠️ Cannot create directory ${attachmentsDir}, using /tmp instead: ${error.message}`)
+      const tmpDir = path.join('/tmp', 'email-attachments', supplierId)
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true })
+      }
+      const timestamp = Date.now()
+      const safeFilename = attachment.filename.replace(/[^a-zA-Z0-9.-]/g, '_')
+      const filePath = path.join(tmpDir, `${timestamp}_${safeFilename}`)
+      fs.writeFileSync(filePath, attachment.content)
+      
+      // Сохраняем в БД с путем /tmp, если не skipDatabase
+      if (!skipDatabase) {
+        await prisma.emailAttachment.create({
+          data: {
+            supplierId,
+            messageId: email.messageId || `msg_${timestamp}`,
+            subject: email.subject || null,
+            fromEmail: email.from?.text || null,
+            attachmentName: attachment.filename,
+            filePath, // Сохраняем путь с /tmp
+            processed: false,
+          },
+        })
+      }
+      
+      console.log(`[EmailParser] Saved attachment to /tmp: ${filePath}`)
+      return filePath
     }
 
     // Generate unique filename
@@ -245,7 +282,36 @@ export class EmailParser {
     const filePath = path.join(attachmentsDir, `${timestamp}_${safeFilename}`)
 
     // Save file
-    fs.writeFileSync(filePath, attachment.content)
+    try {
+      fs.writeFileSync(filePath, attachment.content)
+    } catch (error: any) {
+      // Если не удалось записать в основную директорию, пробуем /tmp
+      console.log(`[EmailParser] ⚠️ Cannot write to ${filePath}, using /tmp instead: ${error.message}`)
+      const tmpDir = path.join('/tmp', 'email-attachments', supplierId)
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true })
+      }
+      const tmpFilePath = path.join(tmpDir, `${timestamp}_${safeFilename}`)
+      fs.writeFileSync(tmpFilePath, attachment.content)
+      
+      // Сохраняем в БД с путем /tmp, если не skipDatabase
+      if (!skipDatabase) {
+        await prisma.emailAttachment.create({
+          data: {
+            supplierId,
+            messageId: email.messageId || `msg_${timestamp}`,
+            subject: email.subject || null,
+            fromEmail: email.from?.text || null,
+            attachmentName: attachment.filename,
+            filePath: tmpFilePath,
+            processed: false,
+          },
+        })
+      }
+      
+      console.log(`[EmailParser] Saved attachment to /tmp: ${tmpFilePath}`)
+      return tmpFilePath
+    }
 
     // Save to database only if not skipped (for validation phase)
     if (!skipDatabase) {

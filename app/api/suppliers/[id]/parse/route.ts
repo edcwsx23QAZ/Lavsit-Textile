@@ -93,7 +93,20 @@ export async function POST(
           })
           
           const existingFiles = allAttachments.filter(att => {
-            const exists = fs.existsSync(att.filePath)
+            // Проверяем оригинальный путь
+            let exists = fs.existsSync(att.filePath)
+            
+            // Если файл не найден и путь содержит data/email-attachments, пробуем найти в /tmp
+            if (!exists && att.filePath.includes('data/email-attachments')) {
+              const tmpPath = att.filePath.replace(/.*data\/email-attachments/, '/tmp/email-attachments')
+              exists = fs.existsSync(tmpPath)
+              if (exists) {
+                console.log(`[parse] ✅ File found in /tmp: ${tmpPath} (original: ${att.filePath})`)
+                // Обновляем путь для дальнейшего использования
+                att.filePath = tmpPath
+              }
+            }
+            
             if (!exists) {
               console.log(`[parse] ⚠️ File not found on disk: ${att.filePath}`)
             }

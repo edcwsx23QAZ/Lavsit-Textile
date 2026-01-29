@@ -78,11 +78,31 @@ export class AmetistParser extends BaseParser {
    */
   private async extractZipFile(zipPath: string): Promise<string> {
     const zip = new AdmZip(zipPath)
-    const extractPath = path.join(path.dirname(zipPath), 'extracted')
     
-    // Создаем папку для распаковки
-    if (!fs.existsSync(extractPath)) {
-      fs.mkdirSync(extractPath, { recursive: true })
+    // На Vercel используем /tmp для распаковки
+    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV
+    let extractPath: string
+    
+    if (isVercel) {
+      // На Vercel используем /tmp
+      extractPath = path.join('/tmp', 'ametist-extracted', path.basename(zipPath, path.extname(zipPath)))
+    } else {
+      // Локально используем директорию рядом с архивом
+      extractPath = path.join(path.dirname(zipPath), 'extracted')
+    }
+    
+    try {
+      // Создаем папку для распаковки
+      if (!fs.existsSync(extractPath)) {
+        fs.mkdirSync(extractPath, { recursive: true })
+      }
+    } catch (error: any) {
+      // Если не удалось создать, пробуем /tmp
+      console.log(`[AmetistParser] ⚠️ Cannot create extract directory ${extractPath}, using /tmp: ${error.message}`)
+      extractPath = path.join('/tmp', 'ametist-extracted', Date.now().toString())
+      if (!fs.existsSync(extractPath)) {
+        fs.mkdirSync(extractPath, { recursive: true })
+      }
     }
 
     // Распаковываем архив
