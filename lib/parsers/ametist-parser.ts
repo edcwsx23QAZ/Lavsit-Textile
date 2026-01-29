@@ -396,6 +396,32 @@ export class AmetistParser extends BaseParser {
     // Игнорируем url, получаем письмо напрямую
     console.log(`[AmetistParser] Starting parse for ${this.supplierName}`)
 
+    // Проверяем наличие правил, если их нет - создаем по умолчанию
+    let rules = await this.loadRules()
+    if (!rules) {
+      console.log(`[AmetistParser] ⚠️ Правила парсинга не найдены. Создание правил по умолчанию...`)
+      
+      // Создаем правила по умолчанию для Аметиста
+      const defaultRules: ParsingRules = {
+        columnMappings: {
+          collection: 2, // C = индекс 2
+          color: 4, // E = индекс 4
+          inStock: 6, // G = индекс 6
+          meterage: 6, // G = индекс 6
+          nextArrivalDate: 9, // J = индекс 9
+        },
+        skipRows: [1, 2], // Пропускаем строки 1 и 2 (служебная информация)
+        headerRow: 2, // Строка 3 (индекс 2) содержит заголовки
+        specialRules: {
+          ametistColorPattern: true,
+        },
+      }
+      
+      await this.saveRules(defaultRules)
+      console.log(`[AmetistParser] ✅ Правила по умолчанию сохранены`)
+      rules = defaultRules
+    }
+
     // Получаем последнее письмо с вложением
     const attachment = await this.fetchLatestEmailAttachment()
 
