@@ -18,6 +18,8 @@
     "setup:email": "tsx scripts/setup-email-configs.ts",
     "auto-setup:email": "tsx scripts/auto-setup-email-configs.ts",
     "fix:ametist-filter": "tsx scripts/fix-ametist-subject-filter.ts",
+    "test:ametist": "tsx scripts/test-ametist-parser.ts",
+    "test:ametist-db": "tsx scripts/test-ametist-from-db.ts",
     "test:noframes": "tsx scripts/test-noframes.ts",
     "test:noframes-data": "tsx scripts/test-noframes-data.ts",
     "test:noframes-full": "tsx scripts/test-noframes-full.ts",
