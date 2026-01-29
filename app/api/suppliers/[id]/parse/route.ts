@@ -31,15 +31,54 @@ export async function POST(
       const { AmetistParser } = await import('@/lib/parsers/ametist-parser')
       parser = new AmetistParser(supplier.id, supplier.name)
       
-      // Парсер сам получает письма и парсит их
-      const fabrics = await parser.parse('')
-      await updateFabricsFromParser(supplier.id, fabrics)
-      
-      return NextResponse.json({
-        success: true,
-        fabricsCount: fabrics.length,
-        message: `Successfully parsed ${fabrics.length} fabrics from email`,
-      })
+      try {
+        // Парсер сам получает письма и парсит их
+        const fabrics = await parser.parse('')
+        console.log(`[parse] Аметист: Парсер вернул ${fabrics.length} тканей`)
+        
+        // Обновляем ткани
+        const updatedCount = await updateFabricsFromParser(supplier.id, fabrics)
+        console.log(`[parse] Аметист: Обновлено/создано тканей: ${updatedCount}`)
+        
+        // Получаем актуальное количество тканей
+        const fabricsCount = await prisma.fabric.count({
+          where: { supplierId: supplier.id },
+        })
+        
+        // Обновляем статус поставщика на 'active' и очищаем errorMessage
+        await prisma.supplier.update({
+          where: { id: supplier.id },
+          data: {
+            fabricsCount,
+            lastUpdatedAt: new Date(),
+            status: 'active',
+            errorMessage: null,
+          },
+        })
+        
+        console.log(`[parse] Аметист: Статус обновлен на 'active', тканей в БД: ${fabricsCount}`)
+        
+        return NextResponse.json({
+          success: true,
+          fabricsCount: fabrics.length,
+          updatedCount: updatedCount,
+          totalFabricsInDb: fabricsCount,
+          message: `Successfully parsed ${fabrics.length} fabrics from email, updated/created: ${updatedCount}`,
+        })
+      } catch (parseError: any) {
+        console.error(`[parse] Аметист: Ошибка при парсинге:`, parseError)
+        
+        // Обновляем статус на 'error' при ошибке
+        await prisma.supplier.update({
+          where: { id: supplier.id },
+          data: {
+            status: 'error',
+            errorMessage: parseError.message || 'Unknown error',
+          },
+        })
+        
+        throw parseError // Пробрасываем ошибку дальше для обработки в общем catch
+      }
     }
     
     // Проверяем метод парсинга для email-поставщиков
