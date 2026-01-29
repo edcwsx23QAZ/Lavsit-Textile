@@ -308,9 +308,14 @@ export async function POST(
           where: { supplierId: supplier.id },
         })
         
-        // Если файлов нет в БД, автоматически пытаемся запустить parse-email
-        if (totalAttachments === 0) {
-          console.log(`[parse] ⚠️ No email attachments in database. Automatically running "Check Email" to fetch emails...`)
+        // Если файлов нет в БД (или мы на Vercel), автоматически пытаемся запустить parse-email
+        // На Vercel всегда получаем письма заново, так как файлы в /tmp не сохраняются между запросами
+        if (totalAttachments === 0 || isVercel) {
+          if (isVercel) {
+            console.log(`[parse] ⚠️ Vercel environment: Always fetching emails fresh (files in /tmp are ephemeral)`)
+          } else {
+            console.log(`[parse] ⚠️ No email attachments in database. Automatically running "Check Email" to fetch emails...`)
+          }
           
           try {
             // Импортируем и вызываем логику parse-email напрямую
