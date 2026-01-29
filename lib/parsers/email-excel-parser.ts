@@ -174,30 +174,53 @@ export class EmailExcelParser extends BaseParser {
       const arrivalCol = rules.columnMappings.nextArrivalDate
       const commentCol = rules.columnMappings.comment
 
-      // Для Нортекса: находим столбец с "пог.м" в заголовках и берем следующий столбец (F)
-      let nortexStockColIndex: number | null = null
+      // Для Нортекса: находим столбец с "пог.м" или "Ед.изм." в заголовках
+      // Столбец F (индекс 5) = "до 100п.м."
+      // Столбец G (индекс 6) = "свыше 100п.м."
+      let nortexUnitColIndex: number | null = null
+      let nortexStockColF: number | null = null // "до 100п.м."
+      let nortexStockColG: number | null = null // "свыше 100п.м."
+      
       if (rules.specialRules?.nortexPattern) {
-        // Ищем столбец с "пог.м" в первых 10 строках (заголовки)
-        for (let headerRowIndex = 0; headerRowIndex < Math.min(10, jsonData.length); headerRowIndex++) {
+        // Ищем столбец с "пог.м", "Ед.изм." или "до 100п.м." в первых 15 строках (заголовки)
+        for (let headerRowIndex = 0; headerRowIndex < Math.min(15, jsonData.length); headerRowIndex++) {
           const headerRow = jsonData[headerRowIndex]
           if (!headerRow) continue
           
           for (let colIndex = 0; colIndex < headerRow.length; colIndex++) {
             const cellValue = String(headerRow[colIndex] || '').trim().toLowerCase()
-            if (cellValue.includes('пог.м') || cellValue.includes('пог м')) {
-              // Найден столбец с "пог.м", берем следующий столбец (F)
-              nortexStockColIndex = colIndex + 1
-              console.log(`[EmailExcelParser] Нортекс: найден столбец "пог.м" в индексе ${colIndex}, столбец наличия (F) = индекс ${nortexStockColIndex}`)
-              break
+            
+            // Ищем столбец "Ед.изм." или "пог.м" (столбец E, индекс 4)
+            if ((cellValue.includes('ед.изм') || cellValue.includes('пог.м') || cellValue.includes('пог м')) && nortexUnitColIndex === null) {
+              nortexUnitColIndex = colIndex
+              console.log(`[EmailExcelParser] Нортекс: найден столбец "Ед.изм." в индексе ${colIndex}`)
+            }
+            
+            // Ищем столбец "до 100п.м." (столбец F, индекс 5)
+            if ((cellValue.includes('до 100п.м') || cellValue.includes('до 100п м') || cellValue.includes('до 100')) && nortexStockColF === null) {
+              nortexStockColF = colIndex
+              console.log(`[EmailExcelParser] Нортекс: найден столбец "до 100п.м." в индексе ${colIndex}`)
+            }
+            
+            // Ищем столбец "свыше 100п.м." (столбец G, индекс 6)
+            if ((cellValue.includes('свыше 100п.м') || cellValue.includes('свыше 100п м') || cellValue.includes('свыше 100')) && nortexStockColG === null) {
+              nortexStockColG = colIndex
+              console.log(`[EmailExcelParser] Нортекс: найден столбец "свыше 100п.м." в индексе ${colIndex}`)
             }
           }
-          if (nortexStockColIndex !== null) break
+          
+          // Если нашли все столбцы, можно выйти
+          if (nortexStockColF !== null && nortexStockColG !== null) break
         }
         
-        // Если не нашли, используем индекс 5 (F) по умолчанию
-        if (nortexStockColIndex === null) {
-          nortexStockColIndex = 5
-          console.log(`[EmailExcelParser] Нортекс: столбец "пог.м" не найден, используем индекс 5 (F) по умолчанию`)
+        // Если не нашли столбцы, используем индексы по умолчанию
+        if (nortexStockColF === null) {
+          nortexStockColF = 5 // Столбец F
+          console.log(`[EmailExcelParser] Нортекс: столбец "до 100п.м." не найден, используем индекс 5 (F) по умолчанию`)
+        }
+        if (nortexStockColG === null) {
+          nortexStockColG = 6 // Столбец G
+          console.log(`[EmailExcelParser] Нортекс: столбец "свыше 100п.м." не найден, используем индекс 6 (G) по умолчанию`)
         }
       }
 
@@ -265,46 +288,68 @@ export class EmailExcelParser extends BaseParser {
           let finalComment: string | null = null
 
           if (specialRules.nortexPattern) {
-            // Нортекс: столбец F - это столбец, который следует за столбцом где написано "пог.м"
-            // Если в столбце F стоит значение отличное от "V", то пишем "Нет в наличии"
+            // Нортекс: проверяем оба столбца F ("до 100п.м.") и G ("свыше 100п.м.")
+            // Если в любом из них есть "V", то товар в наличии
             
-            // Используем найденный индекс столбца F (или индекс 5 по умолчанию)
-            const stockColIndex = nortexStockColIndex ?? 5
+            const stockColF = nortexStockColF ?? 5 // "до 100п.м."
+            const stockColG = nortexStockColG ?? 6 // "свыше 100п.м."
             
             // Получаем значение из столбца F
             let fValue = ''
-            if (row[stockColIndex] !== undefined && row[stockColIndex] !== null) {
-              fValue = String(row[stockColIndex]).trim()
+            if (row[stockColF] !== undefined && row[stockColF] !== null) {
+              fValue = String(row[stockColF]).trim()
             } else {
               // Пробуем получить из ячейки напрямую
-              const colLetter = String.fromCharCode(65 + stockColIndex)
-              const cell = worksheet[`${colLetter}${rowNumber}`]
-              if (cell) {
-                fValue = (cell.w !== undefined && typeof cell.w === 'string') 
-                  ? cell.w.trim() 
-                  : String(cell.v || '').trim()
+              const colLetterF = String.fromCharCode(65 + stockColF)
+              const cellF = worksheet[`${colLetterF}${rowNumber}`]
+              if (cellF) {
+                fValue = (cellF.w !== undefined && typeof cellF.w === 'string') 
+                  ? cellF.w.trim() 
+                  : String(cellF.v || '').trim()
               }
             }
             
-            // Проверяем значение в столбце F
-            if (fValue === 'V' || fValue === 'v') {
-              // "V" = в наличии
+            // Получаем значение из столбца G
+            let gValue = ''
+            if (row[stockColG] !== undefined && row[stockColG] !== null) {
+              gValue = String(row[stockColG]).trim()
+            } else {
+              // Пробуем получить из ячейки напрямую
+              const colLetterG = String.fromCharCode(65 + stockColG)
+              const cellG = worksheet[`${colLetterG}${rowNumber}`]
+              if (cellG) {
+                gValue = (cellG.w !== undefined && typeof cellG.w === 'string') 
+                  ? cellG.w.trim() 
+                  : String(cellG.v || '').trim()
+              }
+            }
+            
+            // Проверяем наличие "V" в любом из столбцов
+            const hasVInF = fValue === 'V' || fValue === 'v'
+            const hasVInG = gValue === 'V' || gValue === 'v'
+            
+            if (hasVInF || hasVInG) {
+              // "V" в любом столбце = в наличии
               finalInStock = true
-            } else if (fValue) {
-              // Любое другое значение (не пустое) = нет в наличии
-              finalInStock = false
-              // Сохраняем значение в комментарий, если это не просто пустое
-              if (fValue && fValue.length > 0) {
-                finalComment = fValue
+              
+              // Определяем метраж на основе того, в каком столбце есть "V"
+              if (hasVInG) {
+                // "V" в столбце G = свыше 100м
+                finalMeterage = 100 // Устанавливаем минимальное значение для "свыше 100м"
+                finalComment = 'свыше 100м'
+              } else if (hasVInF) {
+                // "V" в столбце F = до 100м
+                finalMeterage = null // Точное значение неизвестно, только что до 100м
+                finalComment = 'до 100м'
               }
             } else {
-              // Пустое значение = нет в наличии
+              // Нет "V" ни в одном столбце = нет в наличии
               finalInStock = false
             }
             
             // Логирование для отладки
             if (rowCount < 5) {
-              console.log(`[EmailExcelParser] Нортекс строка ${rowNumber}: столбец F (индекс ${stockColIndex}) = "${fValue}", inStock = ${finalInStock}`)
+              console.log(`[EmailExcelParser] Нортекс строка ${rowNumber}: F(${stockColF})="${fValue}", G(${stockColG})="${gValue}", inStock=${finalInStock}`)
             }
           } else {
             // Стандартная обработка для других поставщиков
