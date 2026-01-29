@@ -13,7 +13,7 @@ import { prisma } from '@/lib/db/prisma'
  * Интегрирован с EmailParser для получения писем напрямую
  * Использует настройки из базы данных для подключения к почте
  */
-export class AmetistParserV2 extends BaseParser {
+export class AmetistParser extends BaseParser {
   private emailParser: EmailParser | null = null
 
   /**
@@ -66,14 +66,14 @@ export class AmetistParserV2 extends BaseParser {
       const since = new Date()
       since.setDate(since.getDate() - searchDays)
 
-      console.log(`[AmetistParserV2] Searching emails from last ${searchDays} days (since ${since.toISOString()})`)
+      console.log(`[AmetistParser] Searching emails from last ${searchDays} days (since ${since.toISOString()})`)
 
       // Получаем письма
       const emails = await this.emailParser.fetchNewEmails(this.supplierId, since)
-      console.log(`[AmetistParserV2] Found ${emails.length} email(s) matching criteria`)
+      console.log(`[AmetistParser] Found ${emails.length} email(s) matching criteria`)
 
       if (emails.length === 0) {
-        console.log(`[AmetistParserV2] No emails found`)
+        console.log(`[AmetistParser] No emails found`)
         return null
       }
 
@@ -92,12 +92,12 @@ export class AmetistParserV2 extends BaseParser {
         if (attachments.length > 0) {
           // Возвращаем первое найденное вложение
           const attachment = attachments[0]
-          console.log(`[AmetistParserV2] Found attachment: ${attachment.filename} (${attachment.size || attachment.content.length} bytes)`)
+          console.log(`[AmetistParser] Found attachment: ${attachment.filename} (${attachment.size || attachment.content.length} bytes)`)
           return attachment
         }
       }
 
-      console.log(`[AmetistParserV2] No valid attachments found in emails`)
+      console.log(`[AmetistParser] No valid attachments found in emails`)
       return null
     } finally {
       await this.emailParser.disconnect()
@@ -110,7 +110,7 @@ export class AmetistParserV2 extends BaseParser {
    */
   async validate(buffer: Buffer, filename: string): Promise<boolean> {
     try {
-      console.log(`[AmetistParserV2] Validating file: ${filename} (${buffer.length} bytes)`)
+      console.log(`[AmetistParser] Validating file: ${filename} (${buffer.length} bytes)`)
 
       if (buffer.length === 0) {
         console.log(`[AmetistParserV2] File is empty`)

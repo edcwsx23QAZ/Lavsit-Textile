@@ -25,11 +25,11 @@ export async function POST(
 
     let parser
     
-    // Специальная обработка для Аметиста - использует AmetistParserV2, который сам получает письма
+    // Специальная обработка для Аметиста - использует AmetistParser, который сам получает письма
     if (supplier.name === 'Аметист' && supplier.parsingMethod === 'email') {
-      console.log(`[parse] Аметист: Using AmetistParserV2 (self-contained email fetching)`)
-      const { AmetistParserV2 } = await import('@/lib/parsers/ametist-parser-v2')
-      parser = new AmetistParserV2(supplier.id, supplier.name)
+      console.log(`[parse] Аметист: Using AmetistParser (self-contained email fetching)`)
+      const { AmetistParser } = await import('@/lib/parsers/ametist-parser')
+      parser = new AmetistParser(supplier.id, supplier.name)
       
       // Парсер сам получает письма и парсит их
       const fabrics = await parser.parse('')
@@ -434,8 +434,8 @@ export async function POST(
                     // Нортекс и другие email-поставщики используют EmailExcelParser
                     let isValid = false
                     if (supplier.name === 'Аметист') {
-                      const { AmetistParserV2 } = await import('@/lib/parsers/ametist-parser-v2')
-                      const validator = new AmetistParserV2(supplier.id, supplier.name)
+                      const { AmetistParser } = await import('@/lib/parsers/ametist-parser')
+                      const validator = new AmetistParser(supplier.id, supplier.name)
                       // Читаем файл в Buffer для валидации
                       const buffer = fs.readFileSync(tempFilePath)
                       isValid = await validator.validate(buffer, attachments[0].filename)
