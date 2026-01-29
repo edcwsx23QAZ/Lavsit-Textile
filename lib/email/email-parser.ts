@@ -32,8 +32,12 @@ export class EmailParser {
     this.config = config
   }
 
-  async connect(): Promise<void> {
+  async connect(retryCount: number = 0): Promise<void> {
+    const maxRetries = 3
+    const retryDelay = 2000 // 2 секунды
+    
     return new Promise((resolve, reject) => {
+      // Увеличиваем таймауты для Vercel и медленных соединений
       this.imap = new Imap({
         user: this.config.user,
         password: this.config.password,
@@ -41,18 +45,68 @@ export class EmailParser {
         port: this.config.port,
         tls: this.config.secure,
         tlsOptions: { rejectUnauthorized: false },
+        connTimeout: 60000, // 60 секунд на подключение
+        authTimeout: 30000, // 30 секунд на аутентификацию
+        keepalive: true, // Поддерживать соединение
+        debug: (info: string) => {
+          // Логируем только важные события
+          if (info.includes('error') || info.includes('timeout') || info.includes('auth')) {
+            console.log(`[EmailParser] IMAP debug: ${info}`)
+          }
+        },
       })
 
+      // Таймаут для всего процесса подключения
+      const connectionTimeout = setTimeout(() => {
+        if (this.imap) {
+          this.imap.end()
+          this.imap = null
+        }
+        const error = new Error('Connection timeout: Failed to connect to IMAP server within 60 seconds')
+        console.error(`[EmailParser] ${error.message}`)
+        
+        // Retry если не достигли максимума
+        if (retryCount < maxRetries) {
+          console.log(`[EmailParser] Retrying connection (attempt ${retryCount + 1}/${maxRetries})...`)
+          setTimeout(() => {
+            this.connect(retryCount + 1).then(resolve).catch(reject)
+          }, retryDelay)
+        } else {
+          reject(error)
+        }
+      }, 60000)
+
       this.imap.once('ready', () => {
+        clearTimeout(connectionTimeout)
         console.log('[EmailParser] Connected to IMAP server')
         resolve()
       })
 
       this.imap.once('error', (err: Error) => {
+        clearTimeout(connectionTimeout)
         console.error('[EmailParser] IMAP error:', err)
-        reject(err)
+        
+        // Проверяем, является ли это ошибкой таймаута
+        const isTimeoutError = err.message?.toLowerCase().includes('timeout') || 
+                              err.message?.toLowerCase().includes('timed out') ||
+                              err.message?.toLowerCase().includes('authenticating')
+        
+        // Retry для ошибок таймаута
+        if (isTimeoutError && retryCount < maxRetries) {
+          console.log(`[EmailParser] Timeout error detected. Retrying connection (attempt ${retryCount + 1}/${maxRetries})...`)
+          if (this.imap) {
+            this.imap.end()
+            this.imap = null
+          }
+          setTimeout(() => {
+            this.connect(retryCount + 1).then(resolve).catch(reject)
+          }, retryDelay)
+        } else {
+          reject(err)
+        }
       })
 
+      console.log(`[EmailParser] Attempting to connect to IMAP server (attempt ${retryCount + 1}/${maxRetries + 1})...`)
       this.imap.connect()
     })
   }
