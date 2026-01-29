@@ -442,8 +442,19 @@ export class EmailParser {
       
       console.log(`[EmailParser] Sample attachments from DB (first 5):`)
       allAttachments.forEach((att, idx) => {
-        const exists = fs.existsSync(att.filePath)
-        console.log(`[EmailParser]   ${idx + 1}. ${att.filePath}, exists: ${exists}, processed: ${att.processed}, createdAt: ${att.createdAt}`)
+        let exists = fs.existsSync(att.filePath)
+        let actualPath = att.filePath
+        
+        // Если файл не найден и путь содержит data/email-attachments, пробуем найти в /tmp
+        if (!exists && att.filePath.includes('data/email-attachments')) {
+          const tmpPath = att.filePath.replace(/.*data\/email-attachments/, '/tmp/email-attachments')
+          exists = fs.existsSync(tmpPath)
+          if (exists) {
+            actualPath = tmpPath
+          }
+        }
+        
+        console.log(`[EmailParser]   ${idx + 1}. ${att.filePath}, exists: ${exists}${exists && actualPath !== att.filePath ? ` (found at: ${actualPath})` : ''}, processed: ${att.processed}, createdAt: ${att.createdAt}`)
       })
       
       if (useAnyLatest && processedCount > 0) {
