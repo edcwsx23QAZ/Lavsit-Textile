@@ -35,12 +35,6 @@ const nextConfig = {
   experimental: {
     // Это поможет избежать проблем с static generation
   },
-  
-  // Улучшаем обработку ошибок в runtime
-  onDemandRevalidation: {
-    // Время жизни кеша для revalidation
-    maxAge: 60,
-  },
 }
 
 module.exports = nextConfig
