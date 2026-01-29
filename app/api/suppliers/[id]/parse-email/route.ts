@@ -154,10 +154,9 @@ export async function POST(
                 return dateB.getTime() - dateA.getTime()
               })
             } else {
+              console.log(`[parse-email] ⚠️ No emails match filters even after manual filtering`)
               // Если после фильтрации ничего не осталось, обновляем sortedEmails на пустой массив
               sortedEmails = []
-            } else {
-              console.log(`[parse-email] ⚠️ No emails match filters even after manual filtering`)
             }
           }
         } finally {
