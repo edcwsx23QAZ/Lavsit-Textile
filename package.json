@@ -20,6 +20,7 @@
     "fix:ametist-filter": "tsx scripts/fix-ametist-subject-filter.ts",
     "test:ametist": "tsx scripts/test-ametist-parser.ts",
     "test:ametist-db": "tsx scripts/test-ametist-from-db.ts",
+    "test:nortex": "tsx scripts/test-nortex-parser.ts",
     "test:noframes": "tsx scripts/test-noframes.ts",
     "test:noframes-data": "tsx scripts/test-noframes-data.ts",
     "test:noframes-full": "tsx scripts/test-noframes-full.ts",
