@@ -66,15 +66,27 @@ export async function POST(
       console.log(`[parse] Email config for ${supplier.name} (normalized):`, JSON.stringify(emailConfig, null, 2))
       const emailParser = new EmailParser(emailConfig)
       
+      // На Vercel файлы в /tmp удаляются после завершения функции
+      // Поэтому на Vercel всегда получаем письма заново и обрабатываем их сразу
+      const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV
+      
       // Get attachments - use any latest if configured, otherwise only unprocessed
       // Для Нортекса и других email-поставщиков автоматически используем последнее вложение, если нет необработанных
       // ВАЖНО: Если useAnyLatestAttachment включен, используем последнее вложение (даже обработанное)
       const useAnyLatest = emailConfig.useAnyLatestAttachment === true
       console.log(`[parse] useAnyLatestAttachment from config: ${emailConfig.useAnyLatestAttachment}, useAnyLatest: ${useAnyLatest}`)
+      console.log(`[parse] Environment: ${isVercel ? 'Vercel' : 'Local'}`)
       
-      // Сначала пытаемся получить вложения (необработанные или последние, в зависимости от настройки)
-      let unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id, useAnyLatest)
-      console.log(`[parse] Found ${unprocessedFiles.length} file(s) after getUnprocessedAttachments (useAnyLatest=${useAnyLatest})`)
+      let unprocessedFiles: string[] = []
+      
+      // На Vercel всегда получаем письма заново, так как файлы в /tmp не сохраняются между запросами
+      if (isVercel) {
+        console.log(`[parse] ⚠️ Vercel environment detected. Will fetch emails fresh on each request (files in /tmp are ephemeral).`)
+      } else {
+        // Локально сначала пытаемся получить вложения из БД
+        unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id, useAnyLatest)
+        console.log(`[parse] Found ${unprocessedFiles.length} file(s) after getUnprocessedAttachments (useAnyLatest=${useAnyLatest})`)
+      }
       
       // Если не найдено вложений, проверяем ситуацию
       if (unprocessedFiles.length === 0) {
@@ -420,7 +432,7 @@ export async function POST(
                 }
                 
                 if (latestEmail && validAttachment) {
-                  // Сохраняем вложение в БД
+                  // Сохраняем вложение в БД (на Vercel файл будет в /tmp, но путь сохраним в БД)
                   const filePath = await parseEmailParser.saveAttachment(
                     supplier.id,
                     latestEmail,
@@ -428,13 +440,23 @@ export async function POST(
                   )
                   
                   console.log(`[parse] [auto-check-email] ✅ Successfully fetched new email attachment: ${validAttachment.filename}`)
+                  console.log(`[parse] [auto-check-email] File saved to: ${filePath}`)
                   
-                  // Теперь пытаемся получить файлы снова
-                  unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id, true)
-                  console.log(`[parse] [auto-check-email] Found ${unprocessedFiles.length} file(s) after auto-check-email`)
-                  
-                  if (unprocessedFiles.length === 0) {
-                    console.log(`[parse] [auto-check-email] ⚠️ Still no files found after auto-check-email`)
+                  // На Vercel используем файл сразу, так как он будет удален после завершения функции
+                  // Локально можем получить файлы через getUnprocessedAttachments
+                  if (isVercel) {
+                    // На Vercel используем файл напрямую
+                    unprocessedFiles = [filePath]
+                    console.log(`[parse] [auto-check-email] Vercel: Using file directly: ${filePath}`)
+                  } else {
+                    // Локально получаем файлы через getUnprocessedAttachments
+                    unprocessedFiles = await emailParser.getUnprocessedAttachments(supplier.id, true)
+                    console.log(`[parse] [auto-check-email] Found ${unprocessedFiles.length} file(s) after auto-check-email`)
+                    
+                    if (unprocessedFiles.length === 0) {
+                      console.log(`[parse] [auto-check-email] ⚠️ Still no files found after auto-check-email, using direct path`)
+                      unprocessedFiles = [filePath]
+                    }
                   }
                 } else {
                   console.log(`[parse] [auto-check-email] ⚠️ No valid Excel attachments found in emails`)
