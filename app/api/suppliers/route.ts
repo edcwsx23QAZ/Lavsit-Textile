@@ -6,10 +6,10 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    // Инициализируем всех поставщиков, если их нет
+    // Инициализируем всех поставщиков, если их меньше 10 (должно быть 14)
     const suppliersCount = await prisma.supplier.count()
     
-    if (suppliersCount === 0 || suppliersCount === 1) {
+    if (suppliersCount < 10) {
       // Если поставщиков нет или только один - инициализируем всех
       const SUPPLIERS = [
         {
