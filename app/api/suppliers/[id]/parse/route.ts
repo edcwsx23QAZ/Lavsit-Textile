@@ -26,7 +26,8 @@ export async function POST(
     let parser
     
     // Проверяем метод парсинга для email-поставщиков
-    if (supplier.parsingMethod === 'email') {
+    // ВАЖНО: Артекс использует URL парсинг, не email!
+    if (supplier.parsingMethod === 'email' && supplier.name !== 'Артекс') {
       // For email type, we need to get the latest unprocessed attachment
       const { EmailParser } = await import('@/lib/email/email-parser')
       

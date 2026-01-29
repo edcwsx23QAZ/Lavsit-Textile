@@ -22,6 +22,7 @@
     "test:ametist-db": "tsx scripts/test-ametist-from-db.ts",
     "test:nortex": "tsx scripts/test-nortex-parser.ts",
     "test:arteks": "tsx scripts/test-arteks-parser.ts",
+    "fix:parsers": "tsx scripts/check-and-fix-parsers.ts",
     "test:noframes": "tsx scripts/test-noframes.ts",
     "test:noframes-data": "tsx scripts/test-noframes-data.ts",
     "test:noframes-full": "tsx scripts/test-noframes-full.ts",
