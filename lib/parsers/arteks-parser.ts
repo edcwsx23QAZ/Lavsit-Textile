@@ -42,8 +42,15 @@ export class ArteksParser extends BaseParser {
       
       const dateStr = `${day}.${month}.${year}`
       // Заменяем дату в URL (формат: DD.MM.YYYY-2.xlsx)
-      // Ищем паттерн даты и заменяем его
-      const url = baseUrl.replace(/\d{2}\.\d{2}\.\d{4}-\d+\.xlsx/, `${dateStr}-2.xlsx`)
+      // Ищем паттерн даты или плейсхолдер и заменяем его
+      let url = baseUrl
+      // Сначала пробуем заменить плейсхолдер DD.MM.YYYY
+      if (url.includes('DD.MM.YYYY')) {
+        url = url.replace('DD.MM.YYYY', dateStr)
+      } else {
+        // Иначе ищем существующую дату и заменяем её
+        url = url.replace(/\d{2}\.\d{2}\.\d{4}-\d+\.xlsx/, `${dateStr}-2.xlsx`)
+      }
       
       try {
         const response = await axios.get(url, { 

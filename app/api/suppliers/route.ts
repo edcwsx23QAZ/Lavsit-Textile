@@ -34,7 +34,7 @@ export async function GET() {
           name: 'Артекс',
           websiteUrl: 'https://artextkani.ru',
           parsingMethod: 'excel',
-          parsingUrl: 'https://artextkani.ru/wp-content/uploads/25.12.2025-2.xlsx',
+          parsingUrl: 'https://artextkani.ru/wp-content/uploads/DD.MM.YYYY-2.xlsx', // Парсер сам найдет актуальную дату
         },
         {
           name: 'TextileData',

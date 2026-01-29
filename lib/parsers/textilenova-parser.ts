@@ -204,7 +204,13 @@ export class TextileNovaParser extends BaseParser {
             if (dateMatch) {
               const day = parseInt(dateMatch[1])
               const month = parseInt(dateMatch[2]) - 1
-              const year = parseInt(dateMatch[3]) < 100 ? 2000 + parseInt(dateMatch[3]) : parseInt(dateMatch[3])
+              let year = parseInt(dateMatch[3])
+              // Для 2-значного года: используем текущий год как ориентир
+              if (year < 100) {
+                const currentYear = new Date().getFullYear()
+                const currentCentury = Math.floor(currentYear / 100) * 100
+                year = currentCentury + year
+              }
               
               // Проверяем валидность даты перед созданием
               if (year >= 1900 && year <= 2100 && month >= 0 && month <= 11 && day >= 1 && day <= 31) {
