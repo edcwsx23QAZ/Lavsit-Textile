@@ -398,9 +398,22 @@ export class EmailParser {
     // Check file existence
     console.log(`[EmailParser] Checking file existence for ${attachments.length} attachment(s)...`)
     const existingFiles = attachments.map((a) => {
-      const exists = fs.existsSync(a.filePath)
+      // Проверяем оригинальный путь
+      let exists = fs.existsSync(a.filePath)
+      let actualPath = a.filePath
+      
+      // Если файл не найден и путь содержит data/email-attachments, пробуем найти в /tmp
+      if (!exists && a.filePath.includes('data/email-attachments')) {
+        const tmpPath = a.filePath.replace(/.*data\/email-attachments/, '/tmp/email-attachments')
+        exists = fs.existsSync(tmpPath)
+        if (exists) {
+          console.log(`[EmailParser] ✅ File found in /tmp: ${tmpPath} (original: ${a.filePath})`)
+          actualPath = tmpPath
+        }
+      }
+      
       console.log(`[EmailParser] Attachment: ${a.filePath}, exists: ${exists}, processed: ${a.processed}, createdAt: ${a.createdAt}`)
-      return { path: a.filePath, exists, attachment: a }
+      return { path: actualPath, exists, attachment: a }
     }).filter((item) => {
       if (!item.exists) {
         console.log(`[EmailParser] ⚠️ File not found on disk: ${item.path}`)
