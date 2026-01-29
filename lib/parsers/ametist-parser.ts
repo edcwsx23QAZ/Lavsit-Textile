@@ -113,7 +113,7 @@ export class AmetistParser extends BaseParser {
       console.log(`[AmetistParser] Validating file: ${filename} (${buffer.length} bytes)`)
 
       if (buffer.length === 0) {
-        console.log(`[AmetistParserV2] File is empty`)
+        console.log(`[AmetistParser] File is empty`)
         return false
       }
 
@@ -128,12 +128,12 @@ export class AmetistParser extends BaseParser {
         )
 
         if (!excelEntry) {
-          console.log(`[AmetistParserV2] Excel file not found in ZIP archive`)
+          console.log(`[AmetistParser] Excel file not found in ZIP archive`)
           return false
         }
 
         excelBuffer = excelEntry.getData()
-        console.log(`[AmetistParserV2] Extracted Excel file from ZIP: ${excelEntry.entryName}`)
+        console.log(`[AmetistParser] Extracted Excel file from ZIP: ${excelEntry.entryName}`)
       } else {
         excelBuffer = buffer
       }
@@ -142,7 +142,7 @@ export class AmetistParser extends BaseParser {
       const workbook = XLSX.read(excelBuffer, { type: 'buffer' })
 
       if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-        console.log(`[AmetistParserV2] File contains no sheets`)
+        console.log(`[AmetistParser] File contains no sheets`)
         return false
       }
 
@@ -160,14 +160,14 @@ export class AmetistParser extends BaseParser {
       }
 
       if (!hasData) {
-        console.log(`[AmetistParserV2] File contains no data`)
+        console.log(`[AmetistParser] File contains no data`)
         return false
       }
 
-      console.log(`[AmetistParserV2] File is valid`)
+      console.log(`[AmetistParser] File is valid`)
       return true
     } catch (error: any) {
-      console.log(`[AmetistParserV2] Validation error: ${error.message}`)
+      console.log(`[AmetistParser] Validation error: ${error.message}`)
       return false
     }
   }
@@ -181,7 +181,7 @@ export class AmetistParser extends BaseParser {
       throw new Error('Правила парсинга не установлены. Сначала проведите анализ.')
     }
 
-    console.log(`[AmetistParserV2] Parsing file: ${filename} (${buffer.length} bytes)`)
+    console.log(`[AmetistParser] Parsing file: ${filename} (${buffer.length} bytes)`)
 
     let excelBuffer: Buffer
 
@@ -198,7 +198,7 @@ export class AmetistParser extends BaseParser {
       }
 
       excelBuffer = excelEntry.getData()
-      console.log(`[AmetistParserV2] Extracted Excel file from ZIP: ${excelEntry.entryName}`)
+      console.log(`[AmetistParser] Extracted Excel file from ZIP: ${excelEntry.entryName}`)
     } else {
       excelBuffer = buffer
     }
@@ -384,7 +384,7 @@ export class AmetistParser extends BaseParser {
       fabrics.push(fabric)
     }
 
-      console.log(`[AmetistParserV2] Parsed ${fabrics.length} fabrics`)
+      console.log(`[AmetistParser] Parsed ${fabrics.length} fabrics`)
     return fabrics
   }
 
@@ -394,7 +394,7 @@ export class AmetistParser extends BaseParser {
    */
   async parse(url: string): Promise<ParsedFabric[]> {
     // Игнорируем url, получаем письмо напрямую
-    console.log(`[AmetistParserV2] Starting parse for ${this.supplierName}`)
+    console.log(`[AmetistParser] Starting parse for ${this.supplierName}`)
 
     // Получаем последнее письмо с вложением
     const attachment = await this.fetchLatestEmailAttachment()
