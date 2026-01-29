@@ -247,13 +247,15 @@ export async function POST(
                       )
                       
                       // Валидация файла - используем правильный парсер в зависимости от поставщика
-                      // Аметист использует AmetistParser (поддерживает ZIP архивы)
+                      // Аметист использует AmetistParser (работает с Buffer)
                       // Нортекс и другие email-поставщики используют EmailExcelParser
                       let isValid = false
                       if (supplier.name === 'Аметист') {
                         const { AmetistParser } = await import('@/lib/parsers/ametist-parser')
                         const validator = new AmetistParser(supplier.id, supplier.name)
-                        isValid = await validator.validateFile(tempFilePath)
+                        // Читаем файл в Buffer для валидации
+                        const buffer = fs.readFileSync(tempFilePath)
+                        isValid = await validator.validate(buffer, attachments[0].filename)
                         console.log(`[parse] Аметист: File validation result: ${isValid}`)
                       } else {
                         // Нортекс и другие email-поставщики используют EmailExcelParser
