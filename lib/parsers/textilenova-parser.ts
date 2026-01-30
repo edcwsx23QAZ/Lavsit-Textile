@@ -7,7 +7,32 @@ import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-
 async function getChromium() {
   try {
     const chromium = await import('@sparticuz/chromium')
-    return chromium.default || chromium
+    const chromiumModule = chromium.default || chromium
+    
+    // Устанавливаем переменную окружения для указания пути к brotli файлам
+    // @sparticuz/chromium использует эту переменную для поиска brotli файлов
+    if (typeof process !== 'undefined' && process.env) {
+      // Пытаемся определить путь к пакету chromium
+      try {
+        const chromiumPath = require.resolve('@sparticuz/chromium')
+        const path = require('path')
+        const chromiumDir = path.dirname(chromiumPath)
+        const chromiumBinDir = path.join(chromiumDir, 'bin')
+        
+        // Устанавливаем переменную окружения для указания пути к brotli
+        // Если переменная не установлена, chromium будет искать в стандартных местах
+        if (!process.env.CHROMIUM_PATH) {
+          process.env.CHROMIUM_PATH = chromiumDir
+        }
+        
+        console.log(`[TextileNovaParser] Chromium путь: ${chromiumDir}`)
+        console.log(`[TextileNovaParser] Chromium bin путь: ${chromiumBinDir}`)
+      } catch (pathError) {
+        console.log(`[TextileNovaParser] Не удалось определить путь к chromium: ${pathError}`)
+      }
+    }
+    
+    return chromiumModule
   } catch (e) {
     console.log('[TextileNovaParser] @sparticuz/chromium не доступен:', e)
     return null
@@ -61,8 +86,40 @@ export class TextileNovaParser extends BaseParser {
       
       try {
         console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
-        const executablePath = await chromium.executablePath()
-        console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
+        
+        // Пытаемся получить executablePath с обработкой ошибок brotli
+        let executablePath: string | null = null
+        try {
+          executablePath = await chromium.executablePath()
+          console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
+        } catch (brotliError: any) {
+          // Если ошибка связана с brotli, пытаемся указать путь вручную
+          if (brotliError?.message?.includes('brotli') || brotliError?.message?.includes('bin')) {
+            console.log('[TextileNovaParser] Обнаружена ошибка brotli, пытаемся указать путь вручную')
+            
+            // Пытаемся определить путь к chromium вручную
+            try {
+              const path = require('path')
+              const chromiumPath = require.resolve('@sparticuz/chromium')
+              const chromiumDir = path.dirname(chromiumPath)
+              const chromiumBinDir = path.join(chromiumDir, 'bin')
+              
+              // Устанавливаем переменную окружения для указания пути к brotli
+              process.env.CHROMIUM_PATH = chromiumDir
+              
+              console.log(`[TextileNovaParser] Установлен CHROMIUM_PATH: ${chromiumDir}`)
+              
+              // Пытаемся снова получить executablePath
+              executablePath = await chromium.executablePath()
+              console.log(`[TextileNovaParser] Chrome executable path (после установки CHROMIUM_PATH): ${executablePath}`)
+            } catch (retryError: any) {
+              console.error(`[TextileNovaParser] Не удалось получить executablePath после установки CHROMIUM_PATH: ${retryError?.message}`)
+              throw brotliError // Выбрасываем исходную ошибку
+            }
+          } else {
+            throw brotliError
+          }
+        }
         
         if (!executablePath) {
           throw new Error('executablePath вернул null или undefined. Chromium не может предоставить путь к Chrome.')
@@ -406,8 +463,40 @@ export class TextileNovaParser extends BaseParser {
       
       try {
         console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
-        const executablePath = await chromium.executablePath()
-        console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
+        
+        // Пытаемся получить executablePath с обработкой ошибок brotli
+        let executablePath: string | null = null
+        try {
+          executablePath = await chromium.executablePath()
+          console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
+        } catch (brotliError: any) {
+          // Если ошибка связана с brotli, пытаемся указать путь вручную
+          if (brotliError?.message?.includes('brotli') || brotliError?.message?.includes('bin')) {
+            console.log('[TextileNovaParser] Обнаружена ошибка brotli, пытаемся указать путь вручную')
+            
+            // Пытаемся определить путь к chromium вручную
+            try {
+              const path = require('path')
+              const chromiumPath = require.resolve('@sparticuz/chromium')
+              const chromiumDir = path.dirname(chromiumPath)
+              const chromiumBinDir = path.join(chromiumDir, 'bin')
+              
+              // Устанавливаем переменную окружения для указания пути к brotli
+              process.env.CHROMIUM_PATH = chromiumDir
+              
+              console.log(`[TextileNovaParser] Установлен CHROMIUM_PATH: ${chromiumDir}`)
+              
+              // Пытаемся снова получить executablePath
+              executablePath = await chromium.executablePath()
+              console.log(`[TextileNovaParser] Chrome executable path (после установки CHROMIUM_PATH): ${executablePath}`)
+            } catch (retryError: any) {
+              console.error(`[TextileNovaParser] Не удалось получить executablePath после установки CHROMIUM_PATH: ${retryError?.message}`)
+              throw brotliError // Выбрасываем исходную ошибку
+            }
+          } else {
+            throw brotliError
+          }
+        }
         
         if (!executablePath) {
           throw new Error('executablePath вернул null или undefined. Chromium не может предоставить путь к Chrome.')
