@@ -518,7 +518,8 @@ export abstract class BaseParser {
       // Проверяем, настроен ли локальный парсер
       const localParserUrl = process.env.LOCAL_PARSER_URL
       if (!localParserUrl) {
-        console.warn(`[${this.constructor.name}] LOCAL_PARSER_URL is not set, skipping fallback`)
+        console.warn(`[${this.constructor.name}] LOCAL_PARSER_URL is not set in environment variables, skipping fallback`)
+        console.warn(`[${this.constructor.name}] To enable fallback, set LOCAL_PARSER_URL in Vercel Dashboard -> Settings -> Environment Variables`)
         throw vercelError
       }
       
