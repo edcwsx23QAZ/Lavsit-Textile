@@ -140,6 +140,7 @@ export class TextileNovaParser extends BaseParser {
       }
     }
     
+    console.log(`[TextileNovaParser] Используем ${usePuppeteerCore ? 'puppeteer-core' : 'puppeteer'}`)
     console.log('[TextileNovaParser] Запускаем браузер с опциями:', JSON.stringify(launchOptions, null, 2))
     const browser = await puppeteerInstance.launch(launchOptions)
     console.log('[TextileNovaParser] Браузер успешно запущен')
@@ -405,12 +406,10 @@ export class TextileNovaParser extends BaseParser {
     console.log(`[TextileNovaParser] Окружение: ${isVercel ? 'Vercel' : 'локальное'}`)
     console.log(`[TextileNovaParser] VERCEL=${process.env.VERCEL}, VERCEL_ENV=${process.env.VERCEL_ENV}, VERCEL_URL=${process.env.VERCEL_URL}`)
     
-    // Получаем правильную версию puppeteer
-    const puppeteerInstance = await getPuppeteer(isVercel)
-    console.log(`[TextileNovaParser] Используем ${isVercel ? 'puppeteer-core' : 'puppeteer'}`)
-    
     // Настройка для Vercel с использованием @sparticuz/chromium
     let launchOptions: any
+    let puppeteerInstance: any = puppeteer
+    let usePuppeteerCore = false
     
     if (isVercel) {
       // Пытаемся использовать chromium на Vercel
@@ -426,6 +425,11 @@ export class TextileNovaParser extends BaseParser {
           if (!executablePath) {
             throw new Error('executablePath вернул null или undefined')
           }
+          
+          // Если есть executablePath, используем puppeteer-core
+          puppeteerInstance = await getPuppeteer(true)
+          usePuppeteerCore = true
+          console.log('[TextileNovaParser] Используем puppeteer-core с chromium')
           
           launchOptions = {
             args: chromium.args || [
@@ -443,7 +447,9 @@ export class TextileNovaParser extends BaseParser {
         } catch (error: any) {
           // Если не удалось использовать chromium, используем стандартный puppeteer
           console.error('[TextileNovaParser] Ошибка при использовании chromium:', error?.message || error)
-          console.log('[TextileNovaParser] Fallback на стандартный puppeteer с минимальными настройками')
+          console.log('[TextileNovaParser] Fallback на стандартный puppeteer (не puppeteer-core)')
+          puppeteerInstance = puppeteer
+          usePuppeteerCore = false
           launchOptions = {
             headless: true,
             args: [
@@ -457,8 +463,10 @@ export class TextileNovaParser extends BaseParser {
           }
         }
       } else {
-        // chromium не доступен, используем стандартный puppeteer
-        console.log('[TextileNovaParser] chromium не доступен, используем стандартный puppeteer')
+        // chromium не доступен, используем стандартный puppeteer (не puppeteer-core)
+        console.log('[TextileNovaParser] chromium не доступен, используем стандартный puppeteer (не puppeteer-core)')
+        puppeteerInstance = puppeteer
+        usePuppeteerCore = false
         launchOptions = {
           headless: true,
           args: [
@@ -504,6 +512,7 @@ export class TextileNovaParser extends BaseParser {
       }
     }
     
+    console.log(`[TextileNovaParser] Используем ${usePuppeteerCore ? 'puppeteer-core' : 'puppeteer'}`)
     console.log('[TextileNovaParser] Запускаем браузер с опциями:', JSON.stringify(launchOptions, null, 2))
     const browser = await puppeteerInstance.launch(launchOptions)
     console.log('[TextileNovaParser] Браузер успешно запущен')
