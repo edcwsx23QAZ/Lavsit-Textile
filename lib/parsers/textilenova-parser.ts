@@ -3,12 +3,15 @@ import axios from 'axios'
 import * as XLSX from 'xlsx'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
 
-// Импорт chromium для Vercel (только если доступен)
-let chromium: any = null
-try {
-  chromium = require('@sparticuz/chromium')
-} catch (e) {
-  // chromium не установлен, используем стандартный puppeteer
+// Функция для получения chromium (динамический импорт для Vercel)
+async function getChromium() {
+  try {
+    const chromium = await import('@sparticuz/chromium')
+    return chromium.default || chromium
+  } catch (e) {
+    console.log('[TextileNovaParser] @sparticuz/chromium не доступен:', e)
+    return null
+  }
 }
 
 export class TextileNovaParser extends BaseParser {
@@ -19,24 +22,49 @@ export class TextileNovaParser extends BaseParser {
     }
 
     // Настройки для Puppeteer - одинаковые для локальной и Vercel среды
-    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined
+    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined || process.env.VERCEL_URL !== undefined
+    
+    console.log(`[TextileNovaParser] Окружение: ${isVercel ? 'Vercel' : 'локальное'}`)
     
     // Настройка для Vercel с использованием @sparticuz/chromium
     let launchOptions: any
-    if (isVercel && chromium) {
-      try {
-        // Используем chromium для Vercel
-        const executablePath = await chromium.executablePath()
-        launchOptions = {
-          args: chromium.args,
-          defaultViewport: chromium.defaultViewport,
-          executablePath,
-          headless: chromium.headless,
-          ignoreHTTPSErrors: true,
+    
+    if (isVercel) {
+      // Пытаемся использовать chromium на Vercel
+      const chromium = await getChromium()
+      
+      if (chromium) {
+        try {
+          console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
+          const executablePath = await chromium.executablePath()
+          console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
+          
+          launchOptions = {
+            args: chromium.args,
+            defaultViewport: chromium.defaultViewport,
+            executablePath,
+            headless: chromium.headless,
+            ignoreHTTPSErrors: true,
+          }
+        } catch (error: any) {
+          // Если не удалось использовать chromium, используем стандартный puppeteer
+          console.error('[TextileNovaParser] Ошибка при использовании chromium:', error?.message || error)
+          console.log('[TextileNovaParser] Fallback на стандартный puppeteer с минимальными настройками')
+          launchOptions = {
+            headless: true,
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu',
+              '--single-process',
+            ],
+            timeout: 60000,
+          }
         }
-      } catch (error) {
-        // Если не удалось использовать chromium, используем стандартный puppeteer
-        console.log('[TextileNovaParser] Не удалось использовать chromium, используем стандартный puppeteer:', error)
+      } else {
+        // chromium не доступен, используем стандартный puppeteer
+        console.log('[TextileNovaParser] chromium не доступен, используем стандартный puppeteer')
         launchOptions = {
           headless: true,
           args: [
@@ -340,24 +368,49 @@ export class TextileNovaParser extends BaseParser {
 
   async analyze(url: string): Promise<ParsingAnalysis> {
     // Настройки для Puppeteer - одинаковые для локальной и Vercel среды
-    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined
+    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined || process.env.VERCEL_URL !== undefined
+    
+    console.log(`[TextileNovaParser] Окружение: ${isVercel ? 'Vercel' : 'локальное'}`)
     
     // Настройка для Vercel с использованием @sparticuz/chromium
     let launchOptions: any
-    if (isVercel && chromium) {
-      try {
-        // Используем chromium для Vercel
-        const executablePath = await chromium.executablePath()
-        launchOptions = {
-          args: chromium.args,
-          defaultViewport: chromium.defaultViewport,
-          executablePath,
-          headless: chromium.headless,
-          ignoreHTTPSErrors: true,
+    
+    if (isVercel) {
+      // Пытаемся использовать chromium на Vercel
+      const chromium = await getChromium()
+      
+      if (chromium) {
+        try {
+          console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
+          const executablePath = await chromium.executablePath()
+          console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
+          
+          launchOptions = {
+            args: chromium.args,
+            defaultViewport: chromium.defaultViewport,
+            executablePath,
+            headless: chromium.headless,
+            ignoreHTTPSErrors: true,
+          }
+        } catch (error: any) {
+          // Если не удалось использовать chromium, используем стандартный puppeteer
+          console.error('[TextileNovaParser] Ошибка при использовании chromium:', error?.message || error)
+          console.log('[TextileNovaParser] Fallback на стандартный puppeteer с минимальными настройками')
+          launchOptions = {
+            headless: true,
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu',
+              '--single-process',
+            ],
+            timeout: 60000,
+          }
         }
-      } catch (error) {
-        // Если не удалось использовать chromium, используем стандартный puppeteer
-        console.log('[TextileNovaParser] Не удалось использовать chromium, используем стандартный puppeteer:', error)
+      } else {
+        // chromium не доступен, используем стандартный puppeteer
+        console.log('[TextileNovaParser] chromium не доступен, используем стандартный puppeteer')
         launchOptions = {
           headless: true,
           args: [
