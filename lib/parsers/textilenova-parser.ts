@@ -16,7 +16,8 @@ export class TextileNovaParser extends BaseParser {
     console.log(`[TextileNovaParser] Окружение: ${isVercel ? 'Vercel' : 'локальное'}`)
     console.log(`[TextileNovaParser] Используем Playwright для автоматизации браузера`)
     
-    // Playwright имеет встроенную поддержку для Vercel и не требует дополнительных настроек
+    // Playwright на Vercel требует установки браузеров в процессе сборки
+    // Браузеры должны быть установлены через postinstall скрипт
     const browser = await playwrightChromium.launch({
       headless: true,
       args: [
@@ -26,6 +27,8 @@ export class TextileNovaParser extends BaseParser {
         '--disable-gpu',
         '--single-process',
       ],
+      // На Vercel используем системный chromium, если доступен
+      channel: isVercel ? undefined : 'chromium',
     })
     console.log('[TextileNovaParser] Браузер успешно запущен')
 
@@ -292,7 +295,8 @@ export class TextileNovaParser extends BaseParser {
     console.log(`[TextileNovaParser] Окружение: ${isVercel ? 'Vercel' : 'локальное'}`)
     console.log(`[TextileNovaParser] Используем Playwright для автоматизации браузера`)
     
-    // Playwright имеет встроенную поддержку для Vercel и не требует дополнительных настроек
+    // Playwright на Vercel требует установки браузеров в процессе сборки
+    // Браузеры должны быть установлены через postinstall скрипт
     const browser = await playwrightChromium.launch({
       headless: true,
       args: [
@@ -302,6 +306,8 @@ export class TextileNovaParser extends BaseParser {
         '--disable-gpu',
         '--single-process',
       ],
+      // На Vercel используем системный chromium, если доступен
+      channel: isVercel ? undefined : 'chromium',
     })
     console.log('[TextileNovaParser] Браузер успешно запущен')
 

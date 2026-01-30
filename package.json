@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev -p 4001",
     "build": "prisma generate && next build",
-    "postinstall": "node scripts/install-chromium-vercel.js",
+    "postinstall": "node scripts/install-chromium-vercel.js && node scripts/install-playwright-vercel.js",
     "vercel-build": "npm run postinstall && prisma generate && next build",
     "start": "next start -p 4001",
     "lint": "next lint",
