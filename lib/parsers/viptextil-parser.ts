@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio'
 import { BaseParser, ParsedFabric, ParsingAnalysis } from './base-parser'
 
 export class ViptextilParser extends BaseParser {
-  async parse(url: string): Promise<ParsedFabric[]> {
+  private async parseOnVercel(url: string): Promise<ParsedFabric[]> {
     console.log(`[ViptextilParser] Начинаем парсинг по новой логике: ${url}`)
     
     try {
@@ -251,7 +251,7 @@ export class ViptextilParser extends BaseParser {
     }
   }
 
-  async analyze(url: string): Promise<ParsingAnalysis> {
+  private async analyzeOnVercel(url: string): Promise<ParsingAnalysis> {
     // Для анализа используем ту же логику, что и для парсинга
     const fabrics = await this.parse(url)
     
@@ -287,5 +287,29 @@ export class ViptextilParser extends BaseParser {
         rows: sampleData.length,
       },
     }
+  }
+
+  async parse(url: string): Promise<ParsedFabric[]> {
+    return await this.withFallback(
+      async () => await this.parseOnVercel(url),
+      async () => {
+        const rules = await this.loadRules()
+        if (!rules) {
+          throw new Error('Правила парсинга не установлены')
+        }
+        const result = await this.callLocalParser('/parse', { url, rules })
+        return result.map((f: any) => ({
+          ...f,
+          nextArrivalDate: f.nextArrivalDate ? new Date(f.nextArrivalDate) : null
+        }))
+      }
+    )
+  }
+
+  async analyze(url: string): Promise<ParsingAnalysis> {
+    return await this.withFallback(
+      async () => await this.analyzeOnVercel(url),
+      async () => await this.callLocalParser('/analyze', { url })
+    )
   }
 }

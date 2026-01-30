@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
 
 export class TexGroupParser extends BaseParser {
-  async parse(url: string): Promise<ParsedFabric[]> {
+  private async parseOnVercel(url: string): Promise<ParsedFabric[]> {
     const rules = await this.loadRules()
     if (!rules) {
       throw new Error('Правила парсинга не установлены. Сначала проведите анализ.')
@@ -127,7 +127,7 @@ export class TexGroupParser extends BaseParser {
     return fabrics
   }
 
-  async analyze(url: string): Promise<ParsingAnalysis> {
+  private async analyzeOnVercel(url: string): Promise<ParsingAnalysis> {
     const response = await axios.get(url, { responseType: 'arraybuffer' })
     const workbook = XLSX.read(response.data, { type: 'buffer' })
     
@@ -199,6 +199,30 @@ export class TexGroupParser extends BaseParser {
         headers: hasHeaders ? firstRow.map(String) : undefined,
       },
     }
+  }
+
+  async parse(url: string): Promise<ParsedFabric[]> {
+    return await this.withFallback(
+      async () => await this.parseOnVercel(url),
+      async () => {
+        const rules = await this.loadRules()
+        if (!rules) {
+          throw new Error('Правила парсинга не установлены')
+        }
+        const result = await this.callLocalParser('/parse', { url, rules })
+        return result.map((f: any) => ({
+          ...f,
+          nextArrivalDate: f.nextArrivalDate ? new Date(f.nextArrivalDate) : null
+        }))
+      }
+    )
+  }
+
+  async analyze(url: string): Promise<ParsingAnalysis> {
+    return await this.withFallback(
+      async () => await this.analyzeOnVercel(url),
+      async () => await this.callLocalParser('/analyze', { url })
+    )
   }
 }
 

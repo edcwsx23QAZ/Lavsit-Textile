@@ -117,7 +117,7 @@ export class EgidaParser extends BaseParser {
     return { inStock: false, comment: null }
   }
 
-  async parse(url: string): Promise<ParsedFabric[]> {
+  private async parseOnVercel(url: string): Promise<ParsedFabric[]> {
     let rules: ParsingRules | null = null
     try {
       rules = await this.loadRules()
@@ -303,7 +303,7 @@ export class EgidaParser extends BaseParser {
     return fabrics
   }
 
-  async analyze(url: string): Promise<ParsingAnalysis> {
+  private async analyzeOnVercel(url: string): Promise<ParsingAnalysis> {
     // Для Эгида находим актуальный URL с датой
     const actualUrl = await this.findActualUrl()
     
@@ -369,6 +369,35 @@ export class EgidaParser extends BaseParser {
         headers: hasHeaders ? firstRow.map(String) : undefined,
       },
     }
+  }
+
+  async parse(url: string): Promise<ParsedFabric[]> {
+    return await this.withFallback(
+      async () => await this.parseOnVercel(url),
+      async () => {
+        let rules = await this.loadRules()
+        if (!rules) {
+          rules = {
+            columnMappings: {},
+            skipRows: [],
+            skipPatterns: [],
+            specialRules: {},
+          }
+        }
+        const result = await this.callLocalParser('/parse', { url, rules })
+        return result.map((f: any) => ({
+          ...f,
+          nextArrivalDate: f.nextArrivalDate ? new Date(f.nextArrivalDate) : null
+        }))
+      }
+    )
+  }
+
+  async analyze(url: string): Promise<ParsingAnalysis> {
+    return await this.withFallback(
+      async () => await this.analyzeOnVercel(url),
+      async () => await this.callLocalParser('/analyze', { url })
+    )
   }
 }
 

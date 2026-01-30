@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
+import axios from 'axios'
 
 export interface ParsedFabric {
   collection: string
@@ -459,6 +460,68 @@ export abstract class BaseParser {
     const str = String(value).trim().replace(/,/g, '.')
     const num = parseFloat(str)
     return isNaN(num) ? null : num
+  }
+
+  /**
+   * Вызывает локальный парсер через HTTP API
+   */
+  protected async callLocalParser(endpoint: string, data: any): Promise<any> {
+    const localParserUrl = process.env.LOCAL_PARSER_URL
+    
+    if (!localParserUrl) {
+      throw new Error('Локальный парсер не настроен (LOCAL_PARSER_URL не установлен)')
+    }
+    
+    // Проверяем доступность через health check
+    try {
+      await axios.get(`${localParserUrl}/health`, { timeout: 2000 })
+    } catch (e) {
+      throw new Error('Локальный парсер недоступен')
+    }
+    
+    // Определяем имя парсера из класса
+    const parserName = this.constructor.name
+    
+    // Вызываем локальный парсер
+    const response = await axios.post(`${localParserUrl}${endpoint}`, {
+      parserName,
+      supplierId: this.supplierId,
+      supplierName: this.supplierName,
+      ...data
+    }, {
+      timeout: 60000,
+      headers: { 'Content-Type': 'application/json' }
+    })
+    
+    if (response.data.success) {
+      return response.data.data
+    } else {
+      throw new Error(response.data.error || 'Ошибка локального парсера')
+    }
+  }
+
+  /**
+   * Выполняет операцию с fallback на локальный парсер
+   */
+  protected async withFallback<T>(
+    vercelOperation: () => Promise<T>,
+    fallbackOperation: () => Promise<T>
+  ): Promise<T> {
+    try {
+      // Пытаемся выполнить на Vercel
+      return await vercelOperation()
+    } catch (vercelError: any) {
+      console.error(`[${this.constructor.name}] Ошибка на Vercel, пробуем локальный парсер:`, vercelError.message)
+      
+      try {
+        // Fallback на локальный парсер
+        return await fallbackOperation()
+      } catch (fallbackError: any) {
+        // Если и локальный парсер не сработал, возвращаем исходную ошибку
+        console.error(`[${this.constructor.name}] Локальный парсер тоже не сработал:`, fallbackError.message)
+        throw vercelError // Возвращаем исходную ошибку с Vercel
+      }
+    }
   }
 }
 

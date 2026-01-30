@@ -159,7 +159,7 @@ export class ArtefactParser extends BaseParser {
     }
   }
 
-  async parse(url: string): Promise<ParsedFabric[]> {
+  private async parseOnVercel(url: string): Promise<ParsedFabric[]> {
     let rules: ParsingRules | null = null
     try {
       rules = await this.loadRules()
@@ -325,7 +325,7 @@ export class ArtefactParser extends BaseParser {
     return fabrics
   }
 
-  async analyze(url: string): Promise<ParsingAnalysis> {
+  private async analyzeOnVercel(url: string): Promise<ParsingAnalysis> {
     // Находим ссылку для скачивания
     const downloadUrl = await this.findDownloadUrl(url)
     
@@ -391,6 +391,40 @@ export class ArtefactParser extends BaseParser {
         headers: hasHeaders ? firstRow.map(String) : undefined,
       },
     }
+  }
+
+  async parse(url: string): Promise<ParsedFabric[]> {
+    return await this.withFallback(
+      async () => await this.parseOnVercel(url),
+      async () => {
+        let rules = await this.loadRules()
+        if (!rules) {
+          rules = {
+            columnMappings: {
+              collection: 0,
+              meterage: 2,
+              comment: 3,
+              nextArrivalDate: 5,
+            },
+            skipRows: [],
+            skipPatterns: [],
+            specialRules: {},
+          }
+        }
+        const result = await this.callLocalParser('/parse', { url, rules })
+        return result.map((f: any) => ({
+          ...f,
+          nextArrivalDate: f.nextArrivalDate ? new Date(f.nextArrivalDate) : null
+        }))
+      }
+    )
+  }
+
+  async analyze(url: string): Promise<ParsingAnalysis> {
+    return await this.withFallback(
+      async () => await this.analyzeOnVercel(url),
+      async () => await this.callLocalParser('/analyze', { url })
+    )
   }
 }
 
