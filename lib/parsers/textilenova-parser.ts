@@ -6,35 +6,110 @@ import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-
 // Функция для получения chromium (динамический импорт для Vercel)
 async function getChromium() {
   try {
-    const chromium = await import('@sparticuz/chromium')
-    const chromiumModule = chromium.default || chromium
-    
-    // Устанавливаем переменную окружения для указания пути к brotli файлам
-    // @sparticuz/chromium использует эту переменную для поиска brotli файлов
-    if (typeof process !== 'undefined' && process.env) {
-      // Пытаемся определить путь к пакету chromium
+    // На Vercel устанавливаем переменную окружения перед импортом
+    // Это помогает chromium найти brotli файлы
+    if (process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined) {
       try {
-        const chromiumPath = require.resolve('@sparticuz/chromium')
         const path = require('path')
-        const chromiumDir = path.dirname(chromiumPath)
-        const chromiumBinDir = path.join(chromiumDir, 'bin')
+        const fs = require('fs')
         
-        // Устанавливаем переменную окружения для указания пути к brotli
-        // Если переменная не установлена, chromium будет искать в стандартных местах
-        if (!process.env.CHROMIUM_PATH) {
-          process.env.CHROMIUM_PATH = chromiumDir
+        // Пробуем найти путь к пакету chromium
+        const possiblePaths = [
+          path.join(process.cwd(), 'node_modules', '@sparticuz', 'chromium'),
+          path.dirname(require.resolve('@sparticuz/chromium')),
+        ]
+        
+        for (const chromiumPath of possiblePaths) {
+          if (fs.existsSync(chromiumPath)) {
+            // Устанавливаем переменную окружения для указания пути к пакету
+            // @sparticuz/chromium будет искать brotli файлы в подпапке bin
+            if (!process.env.CHROMIUM_PATH) {
+              process.env.CHROMIUM_PATH = chromiumPath
+              console.log(`[TextileNovaParser] Установлен CHROMIUM_PATH: ${chromiumPath}`)
+            }
+            break
+          }
         }
-        
-        console.log(`[TextileNovaParser] Chromium путь: ${chromiumDir}`)
-        console.log(`[TextileNovaParser] Chromium bin путь: ${chromiumBinDir}`)
       } catch (pathError) {
-        console.log(`[TextileNovaParser] Не удалось определить путь к chromium: ${pathError}`)
+        console.log(`[TextileNovaParser] Не удалось установить CHROMIUM_PATH: ${pathError}`)
       }
     }
+    
+    const chromium = await import('@sparticuz/chromium')
+    const chromiumModule = chromium.default || chromium
     
     return chromiumModule
   } catch (e) {
     console.log('[TextileNovaParser] @sparticuz/chromium не доступен:', e)
+    return null
+  }
+}
+
+// Функция для получения пути к директории с brotli файлами
+// На Vercel @sparticuz/chromium может искать brotli файлы в разных местах
+function getChromiumBrotliPath(): string | null {
+  try {
+    const path = require('path')
+    const fs = require('fs')
+    
+    // Пробуем несколько способов определения пути
+    const possiblePaths: string[] = []
+    
+    try {
+      // Способ 1: через require.resolve - получаем путь к корневой директории пакета
+      const chromiumPath = require.resolve('@sparticuz/chromium')
+      const chromiumDir = path.dirname(chromiumPath)
+      possiblePaths.push(chromiumDir)
+      console.log(`[TextileNovaParser] Путь 1 (корневая директория пакета): ${chromiumDir}`)
+    } catch (e) {
+      console.log(`[TextileNovaParser] Не удалось определить путь через require.resolve: ${e}`)
+    }
+    
+    try {
+      // Способ 2: через process.cwd() - ищем node_modules/@sparticuz/chromium
+      const cwd = process.cwd()
+      const chromiumPackagePath = path.join(cwd, 'node_modules', '@sparticuz', 'chromium')
+      possiblePaths.push(chromiumPackagePath)
+      console.log(`[TextileNovaParser] Путь 2 (через process.cwd): ${chromiumPackagePath}`)
+    } catch (e) {
+      console.log(`[TextileNovaParser] Не удалось определить путь через process.cwd: ${e}`)
+    }
+    
+    // Ищем существующую директорию с bin подпапкой, содержащей brotli файлы
+    // На Vercel структура может отличаться, поэтому проверяем оба варианта
+    for (const chromiumDir of possiblePaths) {
+      if (fs.existsSync(chromiumDir)) {
+        const binDir = path.join(chromiumDir, 'bin')
+        
+        // Проверяем наличие bin директории и хотя бы одного brotli файла
+        if (fs.existsSync(binDir)) {
+          const chromiumBr = path.join(binDir, 'chromium.br')
+          if (fs.existsSync(chromiumBr)) {
+            console.log(`[TextileNovaParser] ✅ Найдена директория bin с brotli файлами: ${binDir}`)
+            // Возвращаем путь к bin директории, так как @sparticuz/chromium может ожидать именно его
+            return binDir
+          } else {
+            console.log(`[TextileNovaParser] ⚠️ Директория bin найдена, но chromium.br отсутствует: ${binDir}`)
+            // Все равно возвращаем bin, может быть файлы в другом формате
+            return binDir
+          }
+        } else {
+          console.log(`[TextileNovaParser] ⚠️ Директория bin не найдена в: ${chromiumDir}`)
+        }
+      }
+    }
+    
+    // Если не нашли bin, возвращаем первый существующий путь к пакету
+    for (const chromiumDir of possiblePaths) {
+      if (fs.existsSync(chromiumDir)) {
+        console.log(`[TextileNovaParser] ⚠️ Используем путь к пакету без проверки bin: ${chromiumDir}`)
+        return chromiumDir
+      }
+    }
+    
+    return null
+  } catch (e) {
+    console.log(`[TextileNovaParser] Ошибка при определении пути к brotli: ${e}`)
     return null
   }
 }
@@ -87,88 +162,51 @@ export class TextileNovaParser extends BaseParser {
       try {
         console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
         
-        // Определяем путь к директории bin с brotli файлами
-        const path = require('path')
-        const fs = require('fs')
-        let chromiumBinDir: string | null = null
+        // На Vercel используем стандартный вызов executablePath() без параметров
+        // @sparticuz/chromium должен сам найти brotli файлы
+        let executablePath: string | null = null
         
-        try {
-          const chromiumPath = require.resolve('@sparticuz/chromium')
-          const chromiumDir = path.dirname(chromiumPath)
-          chromiumBinDir = path.join(chromiumDir, 'bin')
-          
-          console.log(`[TextileNovaParser] Chromium путь: ${chromiumDir}`)
-          console.log(`[TextileNovaParser] Chromium bin путь: ${chromiumBinDir}`)
-          
-          // Проверяем существование директории bin
-          if (!fs.existsSync(chromiumBinDir)) {
-            console.log(`[TextileNovaParser] ⚠️ Директория bin не существует: ${chromiumBinDir}`)
-            console.log(`[TextileNovaParser] Пытаемся создать директорию...`)
-            
-            // Пытаемся создать директорию
-            try {
-              fs.mkdirSync(chromiumBinDir, { recursive: true })
-              console.log(`[TextileNovaParser] ✅ Директория bin создана: ${chromiumBinDir}`)
-            } catch (mkdirError: any) {
-              console.error(`[TextileNovaParser] ❌ Не удалось создать директорию bin: ${mkdirError?.message}`)
-            }
-          } else {
-            console.log(`[TextileNovaParser] ✅ Директория bin существует: ${chromiumBinDir}`)
-            
-            // Проверяем наличие brotli файлов
-            const brotliFiles = ['chromium.br', 'al2023.tar.br', 'fonts.tar.br', 'swiftshader.tar.br']
-            const missingFiles: string[] = []
-            
-            for (const file of brotliFiles) {
-              const filePath = path.join(chromiumBinDir, file)
-              if (!fs.existsSync(filePath)) {
-                missingFiles.push(file)
-              }
-            }
-            
-            if (missingFiles.length > 0) {
-              console.log(`[TextileNovaParser] ⚠️ Отсутствуют brotli файлы: ${missingFiles.join(', ')}`)
-            } else {
-              console.log(`[TextileNovaParser] ✅ Все brotli файлы найдены`)
-            }
-          }
-        } catch (pathError: any) {
-          console.error(`[TextileNovaParser] ❌ Не удалось определить путь к chromium: ${pathError?.message}`)
+        // Логируем текущее состояние переменных окружения
+        console.log(`[TextileNovaParser] CHROMIUM_PATH=${process.env.CHROMIUM_PATH || 'не установлен'}`)
+        console.log(`[TextileNovaParser] process.cwd()=${process.cwd()}`)
+        console.log(`[TextileNovaParser] __dirname=${typeof __dirname !== 'undefined' ? __dirname : 'не доступен'}`)
+        
+        // Пробуем получить путь к brotli файлам и установить переменную окружения
+        const chromiumBrotliPath = getChromiumBrotliPath()
+        if (chromiumBrotliPath) {
+          console.log(`[TextileNovaParser] Найден путь к brotli: ${chromiumBrotliPath}`)
+          // Устанавливаем переменную окружения для указания пути к brotli файлам
+          // @sparticuz/chromium использует эту переменную для поиска brotli файлов
+          process.env.CHROMIUM_PATH = chromiumBrotliPath
+          console.log(`[TextileNovaParser] Установлен CHROMIUM_PATH: ${process.env.CHROMIUM_PATH}`)
+        } else {
+          console.log(`[TextileNovaParser] ⚠️ Путь к brotli файлам не найден, используем стандартный поиск`)
         }
         
-        // Пытаемся получить executablePath с обработкой ошибок brotli
-        let executablePath: string | null = null
+        console.log(`[TextileNovaParser] Вызываем executablePath() без параметров...`)
+        
         try {
-          // Если мы знаем путь к bin, можем попробовать передать его в executablePath
-          // Но сначала пробуем стандартный вызов
+          // Стандартный вызов без параметров
+          // @sparticuz/chromium использует CHROMIUM_PATH или ищет в стандартных местах
           executablePath = await chromium.executablePath()
-          console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
-        } catch (brotliError: any) {
-          // Если ошибка связана с brotli, пытаемся указать путь вручную
-          if (brotliError?.message?.includes('brotli') || brotliError?.message?.includes('bin')) {
-            console.log('[TextileNovaParser] Обнаружена ошибка brotli, пытаемся указать путь вручную')
-            console.log(`[TextileNovaParser] Ошибка: ${brotliError?.message}`)
-            
-            // Если мы знаем путь к bin, пробуем использовать его
-            if (chromiumBinDir && fs.existsSync(chromiumBinDir)) {
-              console.log(`[TextileNovaParser] Пробуем использовать путь к bin: ${chromiumBinDir}`)
-              
-              // Устанавливаем переменную окружения для указания пути к brotli
-              process.env.CHROMIUM_PATH = chromiumBinDir
-              
-              try {
-                // Пытаемся снова получить executablePath
-                executablePath = await chromium.executablePath()
-                console.log(`[TextileNovaParser] Chrome executable path (после установки CHROMIUM_PATH): ${executablePath}`)
-              } catch (retryError: any) {
-                console.error(`[TextileNovaParser] Не удалось получить executablePath после установки CHROMIUM_PATH: ${retryError?.message}`)
-                throw brotliError // Выбрасываем исходную ошибку
-              }
-            } else {
-              throw brotliError
+          console.log(`[TextileNovaParser] ✅ Chrome executable path получен: ${executablePath}`)
+        } catch (defaultError: any) {
+          console.error(`[TextileNovaParser] ❌ Ошибка при вызове executablePath: ${defaultError?.message}`)
+          console.error(`[TextileNovaParser] Stack trace: ${defaultError?.stack}`)
+          
+          // Если стандартный вызов не работает, пробуем передать путь явно
+          if (chromiumBrotliPath) {
+            console.log(`[TextileNovaParser] Пробуем передать путь явно в executablePath(): ${chromiumBrotliPath}`)
+            try {
+              // Пробуем передать путь к bin директории или корневой директории пакета
+              executablePath = await chromium.executablePath(chromiumBrotliPath)
+              console.log(`[TextileNovaParser] ✅ Chrome executable path получен (с явным путем): ${executablePath}`)
+            } catch (explicitPathError: any) {
+              console.error(`[TextileNovaParser] ❌ Ошибка при вызове executablePath с явным путем: ${explicitPathError?.message}`)
+              throw new Error(`Не удалось получить executablePath от @sparticuz/chromium на Vercel. Стандартный вызов: ${defaultError?.message}, С явным путем: ${explicitPathError?.message}`)
             }
           } else {
-            throw brotliError
+            throw new Error(`Не удалось получить executablePath от @sparticuz/chromium на Vercel. Путь к brotli файлам не найден. Ошибка: ${defaultError?.message}`)
           }
         }
         
@@ -515,88 +553,51 @@ export class TextileNovaParser extends BaseParser {
       try {
         console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
         
-        // Определяем путь к директории bin с brotli файлами
-        const path = require('path')
-        const fs = require('fs')
-        let chromiumBinDir: string | null = null
+        // На Vercel используем стандартный вызов executablePath() без параметров
+        // @sparticuz/chromium должен сам найти brotli файлы
+        let executablePath: string | null = null
         
-        try {
-          const chromiumPath = require.resolve('@sparticuz/chromium')
-          const chromiumDir = path.dirname(chromiumPath)
-          chromiumBinDir = path.join(chromiumDir, 'bin')
-          
-          console.log(`[TextileNovaParser] Chromium путь: ${chromiumDir}`)
-          console.log(`[TextileNovaParser] Chromium bin путь: ${chromiumBinDir}`)
-          
-          // Проверяем существование директории bin
-          if (!fs.existsSync(chromiumBinDir)) {
-            console.log(`[TextileNovaParser] ⚠️ Директория bin не существует: ${chromiumBinDir}`)
-            console.log(`[TextileNovaParser] Пытаемся создать директорию...`)
-            
-            // Пытаемся создать директорию
-            try {
-              fs.mkdirSync(chromiumBinDir, { recursive: true })
-              console.log(`[TextileNovaParser] ✅ Директория bin создана: ${chromiumBinDir}`)
-            } catch (mkdirError: any) {
-              console.error(`[TextileNovaParser] ❌ Не удалось создать директорию bin: ${mkdirError?.message}`)
-            }
-          } else {
-            console.log(`[TextileNovaParser] ✅ Директория bin существует: ${chromiumBinDir}`)
-            
-            // Проверяем наличие brotli файлов
-            const brotliFiles = ['chromium.br', 'al2023.tar.br', 'fonts.tar.br', 'swiftshader.tar.br']
-            const missingFiles: string[] = []
-            
-            for (const file of brotliFiles) {
-              const filePath = path.join(chromiumBinDir, file)
-              if (!fs.existsSync(filePath)) {
-                missingFiles.push(file)
-              }
-            }
-            
-            if (missingFiles.length > 0) {
-              console.log(`[TextileNovaParser] ⚠️ Отсутствуют brotli файлы: ${missingFiles.join(', ')}`)
-            } else {
-              console.log(`[TextileNovaParser] ✅ Все brotli файлы найдены`)
-            }
-          }
-        } catch (pathError: any) {
-          console.error(`[TextileNovaParser] ❌ Не удалось определить путь к chromium: ${pathError?.message}`)
+        // Логируем текущее состояние переменных окружения
+        console.log(`[TextileNovaParser] CHROMIUM_PATH=${process.env.CHROMIUM_PATH || 'не установлен'}`)
+        console.log(`[TextileNovaParser] process.cwd()=${process.cwd()}`)
+        console.log(`[TextileNovaParser] __dirname=${typeof __dirname !== 'undefined' ? __dirname : 'не доступен'}`)
+        
+        // Пробуем получить путь к brotli файлам и установить переменную окружения
+        const chromiumBrotliPath = getChromiumBrotliPath()
+        if (chromiumBrotliPath) {
+          console.log(`[TextileNovaParser] Найден путь к brotli: ${chromiumBrotliPath}`)
+          // Устанавливаем переменную окружения для указания пути к brotli файлам
+          // @sparticuz/chromium использует эту переменную для поиска brotli файлов
+          process.env.CHROMIUM_PATH = chromiumBrotliPath
+          console.log(`[TextileNovaParser] Установлен CHROMIUM_PATH: ${process.env.CHROMIUM_PATH}`)
+        } else {
+          console.log(`[TextileNovaParser] ⚠️ Путь к brotli файлам не найден, используем стандартный поиск`)
         }
         
-        // Пытаемся получить executablePath с обработкой ошибок brotli
-        let executablePath: string | null = null
+        console.log(`[TextileNovaParser] Вызываем executablePath() без параметров...`)
+        
         try {
-          // Если мы знаем путь к bin, можем попробовать передать его в executablePath
-          // Но сначала пробуем стандартный вызов
+          // Стандартный вызов без параметров
+          // @sparticuz/chromium использует CHROMIUM_PATH или ищет в стандартных местах
           executablePath = await chromium.executablePath()
-          console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
-        } catch (brotliError: any) {
-          // Если ошибка связана с brotli, пытаемся указать путь вручную
-          if (brotliError?.message?.includes('brotli') || brotliError?.message?.includes('bin')) {
-            console.log('[TextileNovaParser] Обнаружена ошибка brotli, пытаемся указать путь вручную')
-            console.log(`[TextileNovaParser] Ошибка: ${brotliError?.message}`)
-            
-            // Если мы знаем путь к bin, пробуем использовать его
-            if (chromiumBinDir && fs.existsSync(chromiumBinDir)) {
-              console.log(`[TextileNovaParser] Пробуем использовать путь к bin: ${chromiumBinDir}`)
-              
-              // Устанавливаем переменную окружения для указания пути к brotli
-              process.env.CHROMIUM_PATH = chromiumBinDir
-              
-              try {
-                // Пытаемся снова получить executablePath
-                executablePath = await chromium.executablePath()
-                console.log(`[TextileNovaParser] Chrome executable path (после установки CHROMIUM_PATH): ${executablePath}`)
-              } catch (retryError: any) {
-                console.error(`[TextileNovaParser] Не удалось получить executablePath после установки CHROMIUM_PATH: ${retryError?.message}`)
-                throw brotliError // Выбрасываем исходную ошибку
-              }
-            } else {
-              throw brotliError
+          console.log(`[TextileNovaParser] ✅ Chrome executable path получен: ${executablePath}`)
+        } catch (defaultError: any) {
+          console.error(`[TextileNovaParser] ❌ Ошибка при вызове executablePath: ${defaultError?.message}`)
+          console.error(`[TextileNovaParser] Stack trace: ${defaultError?.stack}`)
+          
+          // Если стандартный вызов не работает, пробуем передать путь явно
+          if (chromiumBrotliPath) {
+            console.log(`[TextileNovaParser] Пробуем передать путь явно в executablePath(): ${chromiumBrotliPath}`)
+            try {
+              // Пробуем передать путь к bin директории или корневой директории пакета
+              executablePath = await chromium.executablePath(chromiumBrotliPath)
+              console.log(`[TextileNovaParser] ✅ Chrome executable path получен (с явным путем): ${executablePath}`)
+            } catch (explicitPathError: any) {
+              console.error(`[TextileNovaParser] ❌ Ошибка при вызове executablePath с явным путем: ${explicitPathError?.message}`)
+              throw new Error(`Не удалось получить executablePath от @sparticuz/chromium на Vercel. Стандартный вызов: ${defaultError?.message}, С явным путем: ${explicitPathError?.message}`)
             }
           } else {
-            throw brotliError
+            throw new Error(`Не удалось получить executablePath от @sparticuz/chromium на Vercel. Путь к brotli файлам не найден. Ошибка: ${defaultError?.message}`)
           }
         }
         
