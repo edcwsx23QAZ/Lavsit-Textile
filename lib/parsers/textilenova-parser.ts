@@ -13,11 +13,17 @@ export class TextileNovaParser extends BaseParser {
     console.log(`[TextileNovaParser] Используем Cheerio для парсинга статического HTML`)
     console.log(`[TextileNovaParser] Загрузка страницы: ${url}`)
 
+    // Проверка на пустой URL
+    if (!url || url.trim() === '') {
+      throw new Error('URL не может быть пустым')
+    }
+
     // Валидация URL
     try {
       new URL(url)
     } catch (e) {
-      throw new Error(`Невалидный URL: ${url}`)
+      const errorMessage = e instanceof Error ? e.message : String(e)
+      throw new Error(`Невалидный URL: ${url}. Ошибка: ${errorMessage}`)
     }
 
     // Загружаем HTML страницы с помощью axios
@@ -77,23 +83,23 @@ export class TextileNovaParser extends BaseParser {
           console.warn(`[TextileNovaParser] Невалидный URL после преобразования: ${href}`, e)
         }
       }
-    })
+      })
 
-    if (!sheetUrl) {
-      throw new Error('Ссылка "Получить остатки" не найдена на странице')
-    }
+      if (!sheetUrl) {
+        throw new Error('Ссылка "Получить остатки" не найдена на странице')
+      }
 
-    console.log(`[TextileNovaParser] Найдена ссылка на Google Sheets: ${sheetUrl}`)
-    
-    // Конвертируем ссылку на редактирование в ссылку на экспорт в Excel
-    // Формат: https://docs.google.com/spreadsheets/d/{ID}/edit -> https://docs.google.com/spreadsheets/d/{ID}/export?format=xlsx
+      console.log(`[TextileNovaParser] Найдена ссылка на Google Sheets: ${sheetUrl}`)
+      
+      // Конвертируем ссылку на редактирование в ссылку на экспорт в Excel
+      // Формат: https://docs.google.com/spreadsheets/d/{ID}/edit -> https://docs.google.com/spreadsheets/d/{ID}/export?format=xlsx
     const sheetIdMatch = (sheetUrl as string).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
-    if (!sheetIdMatch) {
-      throw new Error('Не удалось извлечь ID таблицы из ссылки')
-    }
+      if (!sheetIdMatch) {
+        throw new Error('Не удалось извлечь ID таблицы из ссылки')
+      }
 
-    const sheetId = sheetIdMatch[1]
-    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
+      const sheetId = sheetIdMatch[1]
+      const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
     
     // Валидация URL экспорта
     try {
@@ -101,32 +107,32 @@ export class TextileNovaParser extends BaseParser {
     } catch (e) {
       throw new Error(`Невалидный URL для экспорта: ${exportUrl}`)
     }
-    
-    console.log(`[TextileNovaParser] URL для экспорта: ${exportUrl}`)
-    
-    // Скачиваем Excel файл
+      
+      console.log(`[TextileNovaParser] URL для экспорта: ${exportUrl}`)
+      
+      // Скачиваем Excel файл
     const excelResponse = await axios.get(exportUrl, { 
-      responseType: 'arraybuffer',
-      timeout: 30000,
-    })
+        responseType: 'arraybuffer',
+        timeout: 30000,
+      })
 
     console.log(`[TextileNovaParser] Файл скачан, размер: ${excelResponse.data.length} байт`)
 
-    // Парсим Excel файл
+      // Парсим Excel файл
     const workbook = XLSX.read(excelResponse.data, { type: 'buffer' })
-    
-    // Используем первую вкладку
-    const sheetName = workbook.SheetNames[0]
-    const worksheet = workbook.Sheets[sheetName]
-    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][]
-    
-    console.log(`[TextileNovaParser] Excel загружен, вкладка: ${sheetName}, строк: ${data.length}`)
+      
+      // Используем первую вкладку
+      const sheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[sheetName]
+      const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][]
+      
+      console.log(`[TextileNovaParser] Excel загружен, вкладка: ${sheetName}, строк: ${data.length}`)
 
-    // Парсим данные из Excel
-    const rawFabrics: any[] = []
-    let currentCollection = '' // Для отслеживания текущей коллекции
-    
-    for (let i = 0; i < data.length; i++) {
+      // Парсим данные из Excel
+      const rawFabrics: any[] = []
+      let currentCollection = '' // Для отслеживания текущей коллекции
+      
+      for (let i = 0; i < data.length; i++) {
         const row = data[i]
         if (row.length < 2) continue
 
@@ -228,10 +234,10 @@ export class TextileNovaParser extends BaseParser {
           nextArrivalDateStr,
           comment,
         })
-    }
+      }
 
-    // Применяем парсинг коллекции и цвета на стороне сервера
-    const parsedFabrics: ParsedFabric[] = rawFabrics
+      // Применяем парсинг коллекции и цвета на стороне сервера
+      const parsedFabrics: ParsedFabric[] = rawFabrics
         .filter(fabric => {
           // Пропускаем заголовки и технические строки согласно правилам
           const rowIndex = rawFabrics.indexOf(fabric)
@@ -308,19 +314,25 @@ export class TextileNovaParser extends BaseParser {
         })
         .filter(fabric => fabric.collection || fabric.colorNumber)
 
-    console.log(`[TextileNovaParser] Найдено тканей: ${parsedFabrics.length}`)
-    return parsedFabrics
+      console.log(`[TextileNovaParser] Найдено тканей: ${parsedFabrics.length}`)
+      return parsedFabrics
   }
 
   async analyze(url: string): Promise<ParsingAnalysis> {
     console.log(`[TextileNovaParser] Используем Cheerio для парсинга статического HTML`)
     console.log(`[TextileNovaParser] Анализ страницы: ${url}`)
 
+    // Проверка на пустой URL
+    if (!url || url.trim() === '') {
+      throw new Error('URL не может быть пустым')
+    }
+
     // Валидация URL
     try {
       new URL(url)
-    } catch (e) {
-      throw new Error(`Невалидный URL: ${url}`)
+        } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e)
+      throw new Error(`Невалидный URL: ${url}. Ошибка: ${errorMessage}`)
     }
 
     // Загружаем HTML страницы с помощью axios
@@ -378,20 +390,20 @@ export class TextileNovaParser extends BaseParser {
           console.warn(`[TextileNovaParser] Невалидный URL после преобразования: ${href}`, e)
         }
       }
-    })
+      })
 
-    if (!sheetUrl) {
-      throw new Error('Ссылка "Получить остатки" не найдена на странице')
-    }
+      if (!sheetUrl) {
+        throw new Error('Ссылка "Получить остатки" не найдена на странице')
+      }
 
-    // Извлекаем ID таблицы и скачиваем Excel
+      // Извлекаем ID таблицы и скачиваем Excel
     const sheetIdMatch = (sheetUrl as string).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
-    if (!sheetIdMatch) {
-      throw new Error('Не удалось извлечь ID таблицы из ссылки')
-    }
+      if (!sheetIdMatch) {
+        throw new Error('Не удалось извлечь ID таблицы из ссылки')
+      }
 
-    const sheetId = sheetIdMatch[1]
-    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
+      const sheetId = sheetIdMatch[1]
+      const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
     
     // Валидация URL экспорта
     try {
@@ -399,80 +411,80 @@ export class TextileNovaParser extends BaseParser {
     } catch (e) {
       throw new Error(`Невалидный URL для экспорта: ${exportUrl}`)
     }
-    
-    // Скачиваем Excel файл
+      
+      // Скачиваем Excel файл
     const excelResponse = await axios.get(exportUrl, { 
-      responseType: 'arraybuffer',
-      timeout: 30000,
-    })
-
-    // Парсим Excel
-    const workbook = XLSX.read(excelResponse.data, { type: 'buffer' })
-    const sheetName = workbook.SheetNames[0]
-    const worksheet = workbook.Sheets[sheetName]
-    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][]
-
-    const questions: ParsingAnalysis['questions'] = []
-    const sampleData: any[] = []
-
-    // Собираем первые 15 строк для анализа
-    for (let i = 0; i < Math.min(15, data.length); i++) {
-      sampleData.push(data[i] || [])
-    }
-
-    const maxColumns = Math.max(...sampleData.map(row => row.length), 0)
-
-    // Определяем заголовки
-    const firstRow = sampleData[0] || []
-    const hasHeaders = firstRow.some((cell: any) => 
-      ['коллекция', 'цвет', 'наличие', 'остатки', 'дата'].some(keyword => 
-        String(cell).toLowerCase().includes(keyword)
-      )
-    )
-
-    if (hasHeaders) {
-      questions.push({
-        id: 'header-row',
-        question: 'Это строка заголовков?',
-        type: 'header',
-        options: ['Да', 'Нет'],
-        default: 'Да',
+        responseType: 'arraybuffer',
+        timeout: 30000,
       })
-    }
 
-    // Вопросы о колонках
-    questions.push({
-      id: 'collection-column',
-      question: 'В какой колонке находится коллекция и цвет? (A = 1)',
-      type: 'column',
-      options: Array.from({ length: maxColumns }, (_, i) => `Колонка ${i + 1} (${String.fromCharCode(65 + i)})`),
-      default: 'Колонка 1 (A)',
-    })
+      // Парсим Excel
+    const workbook = XLSX.read(excelResponse.data, { type: 'buffer' })
+      const sheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[sheetName]
+      const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][]
 
-    questions.push({
-      id: 'inStock-column',
-      question: 'В какой колонке находится наличие/остатки? (B = 2)',
-      type: 'column',
-      options: Array.from({ length: maxColumns }, (_, i) => `Колонка ${i + 1} (${String.fromCharCode(65 + i)})`),
-      default: 'Колонка 2 (B)',
-    })
+      const questions: ParsingAnalysis['questions'] = []
+      const sampleData: any[] = []
 
-    questions.push({
-      id: 'nextArrival-column',
-      question: 'В какой колонке находится дата следующего поступления? (C = 3)',
-      type: 'column',
-      options: Array.from({ length: maxColumns }, (_, i) => `Колонка ${i + 1} (${String.fromCharCode(65 + i)})`),
-      default: 'Колонка 3 (C)',
-    })
+      // Собираем первые 15 строк для анализа
+      for (let i = 0; i < Math.min(15, data.length); i++) {
+        sampleData.push(data[i] || [])
+      }
 
-    return {
-      questions,
-      sampleData,
-      structure: {
-        columns: maxColumns,
-        rows: sampleData.length,
-        headers: hasHeaders ? firstRow.map(String) : undefined,
-      },
+      const maxColumns = Math.max(...sampleData.map(row => row.length), 0)
+
+      // Определяем заголовки
+      const firstRow = sampleData[0] || []
+      const hasHeaders = firstRow.some((cell: any) => 
+        ['коллекция', 'цвет', 'наличие', 'остатки', 'дата'].some(keyword => 
+          String(cell).toLowerCase().includes(keyword)
+        )
+      )
+
+      if (hasHeaders) {
+        questions.push({
+          id: 'header-row',
+          question: 'Это строка заголовков?',
+          type: 'header',
+          options: ['Да', 'Нет'],
+          default: 'Да',
+        })
+      }
+
+      // Вопросы о колонках
+      questions.push({
+        id: 'collection-column',
+        question: 'В какой колонке находится коллекция и цвет? (A = 1)',
+        type: 'column',
+        options: Array.from({ length: maxColumns }, (_, i) => `Колонка ${i + 1} (${String.fromCharCode(65 + i)})`),
+        default: 'Колонка 1 (A)',
+      })
+
+      questions.push({
+        id: 'inStock-column',
+        question: 'В какой колонке находится наличие/остатки? (B = 2)',
+        type: 'column',
+        options: Array.from({ length: maxColumns }, (_, i) => `Колонка ${i + 1} (${String.fromCharCode(65 + i)})`),
+        default: 'Колонка 2 (B)',
+      })
+
+      questions.push({
+        id: 'nextArrival-column',
+        question: 'В какой колонке находится дата следующего поступления? (C = 3)',
+        type: 'column',
+        options: Array.from({ length: maxColumns }, (_, i) => `Колонка ${i + 1} (${String.fromCharCode(65 + i)})`),
+        default: 'Колонка 3 (C)',
+      })
+
+      return {
+        questions,
+        sampleData,
+        structure: {
+          columns: maxColumns,
+          rows: sampleData.length,
+          headers: hasHeaders ? firstRow.map(String) : undefined,
+        },
     }
   }
 }

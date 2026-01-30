@@ -145,9 +145,28 @@ export async function POST(
 
     // For email type, analyze method is already overridden to use file path
     // For other types, use parsingUrl
+    if (supplier.parsingMethod !== 'email') {
+      if (!supplier.parsingUrl || supplier.parsingUrl.trim() === '') {
+        return NextResponse.json(
+          { error: 'Parsing URL is not configured for this supplier' },
+          { status: 400 }
+        )
+      }
+      
+      // Валидация URL перед использованием
+      try {
+        new URL(supplier.parsingUrl)
+      } catch (e) {
+        return NextResponse.json(
+          { error: `Invalid parsing URL: ${supplier.parsingUrl}` },
+          { status: 400 }
+        )
+      }
+    }
+    
     const analysis = supplier.parsingMethod === 'email'
       ? await parser.analyze('') // URL not used for email type
-      : await parser.analyze(supplier.parsingUrl)
+      : await parser.analyze(supplier.parsingUrl!)
 
     return NextResponse.json(analysis)
   } catch (error: any) {

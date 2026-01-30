@@ -658,9 +658,22 @@ export async function POST(
       try {
         // For email type, analyze method is already overridden to use file path
         // For other types, use parsingUrl
+        if (supplier.parsingMethod !== 'email') {
+          if (!supplier.parsingUrl || supplier.parsingUrl.trim() === '') {
+            throw new Error('Parsing URL is not configured for this supplier')
+          }
+          
+          // Валидация URL перед использованием
+          try {
+            new URL(supplier.parsingUrl)
+          } catch (e) {
+            throw new Error(`Invalid parsing URL: ${supplier.parsingUrl}`)
+          }
+        }
+        
         const analysis = supplier.parsingMethod === 'email'
           ? await (parser as any).analyze((parser as any).filePath)
-          : await parser.analyze(supplier.parsingUrl)
+          : await parser.analyze(supplier.parsingUrl!)
         const { createAutoRules } = await import('@/lib/parsers/auto-rules')
         const autoRules = createAutoRules(supplier.name, analysis)
         await parser.saveRules(autoRules)
