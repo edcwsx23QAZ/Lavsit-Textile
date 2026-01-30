@@ -1,55 +1,59 @@
 @echo off
-REM Скрипт для настройки автозапуска локального сервера парсеров
-REM Требует прав администратора
-REM Использование: Запустите от имени администратора
+chcp 65001 >nul 2>&1
+REM Script for setting up autostart of local parser server
+REM Requires administrator rights
+REM Usage: Run as Administrator
 
 echo ========================================
-echo Настройка автозапуска локального сервера парсеров
+echo Setting up autostart for local parser server
 echo ========================================
 echo.
 
-REM Проверяем права администратора
+REM Check for administrator rights
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo [ОШИБКА] Этот скрипт требует прав администратора!
-    echo Запустите файл от имени администратора (правой кнопкой - Запуск от имени администратора)
+    echo [ERROR] This script requires administrator rights!
+    echo Please run the file as Administrator (right-click - Run as administrator)
+    echo.
     pause
     exit /b 1
 )
 
-echo [OK] Права администратора подтверждены
+echo [OK] Administrator rights confirmed
 echo.
 
-REM Получаем путь к проекту
+REM Get project path
 set "SCRIPT_DIR=%~dp0"
 set "PROJECT_ROOT=%SCRIPT_DIR%.."
 cd /d "%PROJECT_ROOT%"
 
-echo [INFO] Директория проекта: %PROJECT_ROOT%
+echo [INFO] Project directory: %PROJECT_ROOT%
 echo.
 
-REM Запускаем PowerShell скрипт для настройки
-echo [INFO] Запуск PowerShell скрипта настройки...
+REM Run PowerShell script for setup
+echo [INFO] Running PowerShell setup script...
 powershell -ExecutionPolicy Bypass -File "%SCRIPT_DIR%setup-autostart-local-parser.ps1"
 
 if %errorLevel% neq 0 (
-    echo [ОШИБКА] Не удалось настроить автозапуск
+    echo.
+    echo [ERROR] Failed to setup autostart
+    echo Please check the error messages above
+    echo.
     pause
     exit /b 1
 )
 
 echo.
 echo ========================================
-echo [УСПЕХ] Автозапуск настроен!
+echo [SUCCESS] Autostart configured!
 echo ========================================
 echo.
-echo Задача будет автоматически запускаться при входе в систему.
+echo The task will automatically start on system login.
 echo.
-echo Для проверки задачи используйте:
-echo   Get-ScheduledTask -TaskName "LavsitTextileLocalParser"
+echo To check the task, use:
+echo   npm run local-parser:check
 echo.
-echo Для удаления задачи используйте:
+echo To remove the task, use:
 echo   Unregister-ScheduledTask -TaskName "LavsitTextileLocalParser" -Confirm:$false
 echo.
 pause
-
