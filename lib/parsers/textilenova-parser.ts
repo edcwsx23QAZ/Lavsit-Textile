@@ -13,6 +13,13 @@ export class TextileNovaParser extends BaseParser {
     console.log(`[TextileNovaParser] Используем Cheerio для парсинга статического HTML`)
     console.log(`[TextileNovaParser] Загрузка страницы: ${url}`)
 
+    // Валидация URL
+    try {
+      new URL(url)
+    } catch (e) {
+      throw new Error(`Невалидный URL: ${url}`)
+    }
+
     // Загружаем HTML страницы с помощью axios
     const response = await axios.get(url, {
       headers: {
@@ -37,15 +44,37 @@ export class TextileNovaParser extends BaseParser {
       const $link = $(element)
       const text = $link.text().toLowerCase()
       if (text.includes('получить остатки') || text.includes('остатки')) {
-        sheetUrl = $link.attr('href') || null
+        let href = $link.attr('href')
+        if (!href) return
+        
+        // Обрабатываем разные форматы ссылок
+        // Если ссылка начинается с //, добавляем https:
+        if (href.startsWith('//')) {
+          href = `https:${href}`
+        }
         // Если ссылка относительная, делаем её абсолютной
-        if (sheetUrl && !sheetUrl.startsWith('http')) {
+        else if (!href.startsWith('http://') && !href.startsWith('https://')) {
           try {
             const baseUrl = new URL(url)
-            sheetUrl = new URL(sheetUrl, baseUrl.origin).href
+            // Если ссылка начинается с /, используем origin
+            if (href.startsWith('/')) {
+              href = `${baseUrl.origin}${href}`
+            } else {
+              // Относительный путь
+              href = new URL(href, baseUrl.href).href
+            }
           } catch (e) {
-            console.warn(`[TextileNovaParser] Не удалось преобразовать относительную ссылку: ${sheetUrl}`)
+            console.warn(`[TextileNovaParser] Не удалось преобразовать относительную ссылку: ${href}`, e)
+            return // Пропускаем эту ссылку
           }
+        }
+        
+        // Валидация итогового URL
+        try {
+          new URL(href)
+          sheetUrl = href
+        } catch (e) {
+          console.warn(`[TextileNovaParser] Невалидный URL после преобразования: ${href}`, e)
         }
       }
     })
@@ -65,6 +94,13 @@ export class TextileNovaParser extends BaseParser {
 
     const sheetId = sheetIdMatch[1]
     const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
+    
+    // Валидация URL экспорта
+    try {
+      new URL(exportUrl)
+    } catch (e) {
+      throw new Error(`Невалидный URL для экспорта: ${exportUrl}`)
+    }
     
     console.log(`[TextileNovaParser] URL для экспорта: ${exportUrl}`)
     
@@ -280,6 +316,13 @@ export class TextileNovaParser extends BaseParser {
     console.log(`[TextileNovaParser] Используем Cheerio для парсинга статического HTML`)
     console.log(`[TextileNovaParser] Анализ страницы: ${url}`)
 
+    // Валидация URL
+    try {
+      new URL(url)
+    } catch (e) {
+      throw new Error(`Невалидный URL: ${url}`)
+    }
+
     // Загружаем HTML страницы с помощью axios
     const response = await axios.get(url, {
       headers: {
@@ -302,15 +345,37 @@ export class TextileNovaParser extends BaseParser {
       const $link = $(element)
       const text = $link.text().toLowerCase()
       if (text.includes('получить остатки') || text.includes('остатки')) {
-        sheetUrl = $link.attr('href') || null
+        let href = $link.attr('href')
+        if (!href) return
+        
+        // Обрабатываем разные форматы ссылок
+        // Если ссылка начинается с //, добавляем https:
+        if (href.startsWith('//')) {
+          href = `https:${href}`
+        }
         // Если ссылка относительная, делаем её абсолютной
-        if (sheetUrl && !sheetUrl.startsWith('http')) {
+        else if (!href.startsWith('http://') && !href.startsWith('https://')) {
           try {
             const baseUrl = new URL(url)
-            sheetUrl = new URL(sheetUrl, baseUrl.origin).href
+            // Если ссылка начинается с /, используем origin
+            if (href.startsWith('/')) {
+              href = `${baseUrl.origin}${href}`
+            } else {
+              // Относительный путь
+              href = new URL(href, baseUrl.href).href
+            }
           } catch (e) {
-            console.warn(`[TextileNovaParser] Не удалось преобразовать относительную ссылку: ${sheetUrl}`)
+            console.warn(`[TextileNovaParser] Не удалось преобразовать относительную ссылку: ${href}`, e)
+            return // Пропускаем эту ссылку
           }
+        }
+        
+        // Валидация итогового URL
+        try {
+          new URL(href)
+          sheetUrl = href
+        } catch (e) {
+          console.warn(`[TextileNovaParser] Невалидный URL после преобразования: ${href}`, e)
         }
       }
     })
@@ -327,6 +392,13 @@ export class TextileNovaParser extends BaseParser {
 
     const sheetId = sheetIdMatch[1]
     const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
+    
+    // Валидация URL экспорта
+    try {
+      new URL(exportUrl)
+    } catch (e) {
+      throw new Error(`Невалидный URL для экспорта: ${exportUrl}`)
+    }
     
     // Скачиваем Excel файл
     const excelResponse = await axios.get(exportUrl, { 
