@@ -4,7 +4,7 @@
       "maxDuration": 300
     }
   },
-  "buildCommand": "prisma generate && next build",
+  "buildCommand": "npm run vercel-build",
   "installCommand": "npm install",
   "crons": []
 }
