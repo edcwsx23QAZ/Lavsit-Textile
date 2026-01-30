@@ -3,7 +3,7 @@ import cors from 'cors'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from '../lib/parsers/base-parser'
 
 const app = express()
-const PORT = process.env.LOCAL_PARSER_PORT || 4002
+const PORT = process.env.LOCAL_PARSER_PORT || 4003
 
 // Middleware
 app.use(cors())

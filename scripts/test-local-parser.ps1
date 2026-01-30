@@ -7,7 +7,7 @@ Write-Host "Testing local parser server..." -ForegroundColor Cyan
 Write-Host ""
 
 # Проверяем, запущен ли сервер
-$port = if ($env:LOCAL_PARSER_PORT) { $env:LOCAL_PARSER_PORT } else { "4002" }
+$port = if ($env:LOCAL_PARSER_PORT) { $env:LOCAL_PARSER_PORT } else { "4003" }
 
 Write-Host "1. Checking if server is running on port $port..." -ForegroundColor Yellow
 try {

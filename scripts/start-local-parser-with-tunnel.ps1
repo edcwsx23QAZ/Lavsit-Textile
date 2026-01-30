@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 Write-Host "🚀 Запуск локального сервера парсеров с туннелем..." -ForegroundColor Green
 
 # Получаем порт из переменной окружения или используем по умолчанию
-$port = if ($env:LOCAL_PARSER_PORT) { $env:LOCAL_PARSER_PORT } else { "4002" }
+$port = if ($env:LOCAL_PARSER_PORT) { $env:LOCAL_PARSER_PORT } else { "4003" }
 Write-Host "📡 Порт сервера: $port" -ForegroundColor Cyan
 
 # Переходим в директорию проекта

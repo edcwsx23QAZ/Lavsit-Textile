@@ -10,7 +10,7 @@ Write-Host ""
 
 # 1. Проверка локального сервера
 Write-Host "1. Checking local parser server..." -ForegroundColor Yellow
-$port = if ($env:LOCAL_PARSER_PORT) { $env:LOCAL_PARSER_PORT } else { "4002" }
+$port = if ($env:LOCAL_PARSER_PORT) { $env:LOCAL_PARSER_PORT } else { "4003" }
 
 try {
     $health = Invoke-RestMethod -Uri "http://localhost:$port/health" -TimeoutSec 2 -ErrorAction Stop

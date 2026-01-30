@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 Write-Host "🔍 Поиск активного туннеля..." -ForegroundColor Cyan
 
 # Получаем порт
-$port = if ($env:LOCAL_PARSER_PORT) { $env:LOCAL_PARSER_PORT } else { "4002" }
+$port = if ($env:LOCAL_PARSER_PORT) { $env:LOCAL_PARSER_PORT } else { "4003" }
 
 # Пытаемся получить URL из ngrok
 try {

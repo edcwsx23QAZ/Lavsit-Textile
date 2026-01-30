@@ -4,10 +4,10 @@
   "private": true,
   "description": "Lavsit Textile - парсер данных наличия и цен тканей от разных поставщиков",
   "scripts": {
-    "dev": "next dev -p 4001",
+    "dev": "next dev -p 4002",
     "build": "prisma generate && next build",
     "vercel-build": "prisma generate && next build",
-    "start": "next start -p 4001",
+    "start": "next start -p 4002",
     "lint": "next lint",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

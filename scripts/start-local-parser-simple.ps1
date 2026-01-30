@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "Starting local parser server with tunnel..." -ForegroundColor Green
 
-$port = if ($env:LOCAL_PARSER_PORT) { $env:LOCAL_PARSER_PORT } else { "4002" }
+$port = if ($env:LOCAL_PARSER_PORT) { $env:LOCAL_PARSER_PORT } else { "4003" }
 Write-Host "Port: $port" -ForegroundColor Cyan
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
