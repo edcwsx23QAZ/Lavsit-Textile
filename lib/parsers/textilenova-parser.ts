@@ -25,12 +25,11 @@ export class TextileNovaParser extends BaseParser {
     let launchOptions: any
     if (isVercel && chromium) {
       // Используем chromium для Vercel
-      chromium.setGraphicsMode(false) // Отключаем графику для serverless
       launchOptions = {
         args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
         defaultViewport: chromium.defaultViewport,
         executablePath: await chromium.executablePath(),
-        headless: chromium.headless,
+        headless: true,
         ignoreHTTPSErrors: true,
       }
     } else {
@@ -330,12 +329,11 @@ export class TextileNovaParser extends BaseParser {
     let launchOptions: any
     if (isVercel && chromium) {
       // Используем chromium для Vercel
-      chromium.setGraphicsMode(false) // Отключаем графику для serverless
       launchOptions = {
         args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
         defaultViewport: chromium.defaultViewport,
         executablePath: await chromium.executablePath(),
-        headless: chromium.headless,
+        headless: true,
         ignoreHTTPSErrors: true,
       }
     } else {
