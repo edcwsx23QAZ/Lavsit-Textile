@@ -85,7 +85,8 @@
     "xlsx": "^0.18.5",
     "zod": "^3.23.8",
     "chokidar": "^3.6.0",
-    "@supabase/supabase-js": "^2.39.0"
+    "@supabase/supabase-js": "^2.39.0",
+    "@sparticuz/chromium": "^143.0.4"
   },
   "devDependencies": {
     "@types/imap": "^0.8.40",
