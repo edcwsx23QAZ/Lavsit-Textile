@@ -1,5 +1,4 @@
 ﻿import { chromium as playwrightChromium } from 'playwright'
-import { chromium as browserChromium } from '@playwright/browser-chromium'
 import axios from 'axios'
 import * as XLSX from 'xlsx'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
@@ -22,16 +21,39 @@ export class TextileNovaParser extends BaseParser {
     let browser
     if (isVercel) {
       console.log('[TextileNovaParser] Используем @playwright/browser-chromium для Vercel')
-      browser = await browserChromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--single-process',
-        ],
-      })
+      try {
+        // Динамический импорт для @playwright/browser-chromium
+        const browserChromium = await import('@playwright/browser-chromium')
+        // @playwright/browser-chromium экспортирует chromium через default или именованный экспорт
+        const chromium = browserChromium.chromium || browserChromium.default?.chromium || browserChromium.default
+        if (!chromium) {
+          throw new Error('Не удалось импортировать chromium из @playwright/browser-chromium')
+        }
+        browser = await chromium.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process',
+          ],
+        })
+      } catch (browserError: any) {
+        console.error(`[TextileNovaParser] Ошибка при использовании @playwright/browser-chromium: ${browserError?.message}`)
+        // Fallback на стандартный Playwright
+        console.log('[TextileNovaParser] Используем стандартный Playwright как fallback')
+        browser = await playwrightChromium.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process',
+          ],
+        })
+      }
     } else {
       console.log('[TextileNovaParser] Используем стандартный Playwright для локальной среды')
       browser = await playwrightChromium.launch({
@@ -315,16 +337,39 @@ export class TextileNovaParser extends BaseParser {
     let browser
     if (isVercel) {
       console.log('[TextileNovaParser] Используем @playwright/browser-chromium для Vercel')
-      browser = await browserChromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--single-process',
-        ],
-      })
+      try {
+        // Динамический импорт для @playwright/browser-chromium
+        const browserChromium = await import('@playwright/browser-chromium')
+        // @playwright/browser-chromium экспортирует chromium через default или именованный экспорт
+        const chromium = browserChromium.chromium || browserChromium.default?.chromium || browserChromium.default
+        if (!chromium) {
+          throw new Error('Не удалось импортировать chromium из @playwright/browser-chromium')
+        }
+        browser = await chromium.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process',
+          ],
+        })
+      } catch (browserError: any) {
+        console.error(`[TextileNovaParser] Ошибка при использовании @playwright/browser-chromium: ${browserError?.message}`)
+        // Fallback на стандартный Playwright
+        console.log('[TextileNovaParser] Используем стандартный Playwright как fallback')
+        browser = await playwrightChromium.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process',
+          ],
+        })
+      }
     } else {
       console.log('[TextileNovaParser] Используем стандартный Playwright для локальной среды')
       browser = await playwrightChromium.launch({
