@@ -20,10 +20,43 @@ if (isVercel) {
     console.log(`📁 Директория chromium: ${chromiumDir}`)
     console.log(`📁 Директория bin: ${chromiumBinDir}`)
     
-    // Создаем директорию bin, если её нет
-    if (!fs.existsSync(chromiumBinDir)) {
-      console.log(`📁 Создаем директорию bin: ${chromiumBinDir}`)
-      fs.mkdirSync(chromiumBinDir, { recursive: true })
+    // Проверяем существование директории bin
+    if (fs.existsSync(chromiumBinDir)) {
+      console.log(`✅ Директория bin существует: ${chromiumBinDir}`)
+      
+      // Проверяем наличие brotli файлов
+      const brotliFiles = ['chromium.br', 'al2023.tar.br', 'fonts.tar.br', 'swiftshader.tar.br']
+      const existingFiles = []
+      const missingFiles = []
+      
+      for (const file of brotliFiles) {
+        const filePath = path.join(chromiumBinDir, file)
+        if (fs.existsSync(filePath)) {
+          existingFiles.push(file)
+          console.log(`  ✅ Найден файл: ${file}`)
+        } else {
+          missingFiles.push(file)
+          console.log(`  ❌ Отсутствует файл: ${file}`)
+        }
+      }
+      
+      if (missingFiles.length > 0) {
+        console.log(`⚠️ Отсутствуют brotli файлы: ${missingFiles.join(', ')}`)
+        console.log(`   Это может вызвать проблемы при распаковке Chromium на Vercel`)
+      } else {
+        console.log(`✅ Все brotli файлы найдены (${existingFiles.length} файлов)`)
+      }
+    } else {
+      console.log(`❌ Директория bin не существует: ${chromiumBinDir}`)
+      console.log(`📁 Пытаемся создать директорию bin...`)
+      
+      try {
+        fs.mkdirSync(chromiumBinDir, { recursive: true })
+        console.log(`✅ Директория bin создана: ${chromiumBinDir}`)
+        console.log(`⚠️ Но brotli файлы все еще отсутствуют - они должны быть в пакете`)
+      } catch (mkdirError) {
+        console.error(`❌ Не удалось создать директорию bin: ${mkdirError.message}`)
+      }
     }
     
     // Пытаемся загрузить и проверить chromium
