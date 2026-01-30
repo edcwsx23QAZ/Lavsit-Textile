@@ -3,6 +3,14 @@ import axios from 'axios'
 import * as XLSX from 'xlsx'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
 
+// Импорт chromium для Vercel (только если доступен)
+let chromium: any = null
+try {
+  chromium = require('@sparticuz/chromium')
+} catch (e) {
+  // chromium не установлен, используем стандартный puppeteer
+}
+
 export class TextileNovaParser extends BaseParser {
   async parse(url: string): Promise<ParsedFabric[]> {
     const rules = await this.loadRules()
@@ -12,38 +20,53 @@ export class TextileNovaParser extends BaseParser {
 
     // Настройки для Puppeteer - одинаковые для локальной и Vercel среды
     const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-background-timer-throttling',
-        '--disable-renderer-backgrounding',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-breakpad',
-        '--disable-component-extensions-with-background-pages',
-        '--disable-features=TranslateUI',
-        '--disable-ipc-flooding-protection',
-        '--disable-hang-monitor',
-        '--disable-prompt-on-repost',
-        '--disable-sync',
-        '--metrics-recording-only',
-        '--no-first-run',
-        '--safebrowsing-disable-auto-update',
-        '--enable-automation',
-        '--password-store=basic',
-        '--use-mock-keychain',
-        ...(isVercel ? [
-          '--single-process', // Важно для Vercel serverless функций
-        ] : []),
-      ],
-      timeout: isVercel ? 60000 : 30000, // Больше времени на Vercel для инициализации
-    })
+    
+    // Настройка для Vercel с использованием @sparticuz/chromium
+    let launchOptions: any
+    if (isVercel && chromium) {
+      // Используем chromium для Vercel
+      chromium.setGraphicsMode(false) // Отключаем графику для serverless
+      launchOptions = {
+        args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+        ignoreHTTPSErrors: true,
+      }
+    } else {
+      // Стандартные настройки для локальной среды
+      launchOptions = {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+          '--disable-background-networking',
+          '--disable-background-timer-throttling',
+          '--disable-renderer-backgrounding',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-breakpad',
+          '--disable-component-extensions-with-background-pages',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+          '--disable-hang-monitor',
+          '--disable-prompt-on-repost',
+          '--disable-sync',
+          '--metrics-recording-only',
+          '--no-first-run',
+          '--safebrowsing-disable-auto-update',
+          '--enable-automation',
+          '--password-store=basic',
+          '--use-mock-keychain',
+        ],
+        timeout: 30000,
+      }
+    }
+    
+    const browser = await puppeteer.launch(launchOptions)
 
     try {
       const page = await browser.newPage()
@@ -302,38 +325,53 @@ export class TextileNovaParser extends BaseParser {
   async analyze(url: string): Promise<ParsingAnalysis> {
     // Настройки для Puppeteer - одинаковые для локальной и Vercel среды
     const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-background-timer-throttling',
-        '--disable-renderer-backgrounding',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-breakpad',
-        '--disable-component-extensions-with-background-pages',
-        '--disable-features=TranslateUI',
-        '--disable-ipc-flooding-protection',
-        '--disable-hang-monitor',
-        '--disable-prompt-on-repost',
-        '--disable-sync',
-        '--metrics-recording-only',
-        '--no-first-run',
-        '--safebrowsing-disable-auto-update',
-        '--enable-automation',
-        '--password-store=basic',
-        '--use-mock-keychain',
-        ...(isVercel ? [
-          '--single-process', // Важно для Vercel serverless функций
-        ] : []),
-      ],
-      timeout: isVercel ? 60000 : 30000, // Больше времени на Vercel для инициализации
-    })
+    
+    // Настройка для Vercel с использованием @sparticuz/chromium
+    let launchOptions: any
+    if (isVercel && chromium) {
+      // Используем chromium для Vercel
+      chromium.setGraphicsMode(false) // Отключаем графику для serverless
+      launchOptions = {
+        args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+        ignoreHTTPSErrors: true,
+      }
+    } else {
+      // Стандартные настройки для локальной среды
+      launchOptions = {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+          '--disable-background-networking',
+          '--disable-background-timer-throttling',
+          '--disable-renderer-backgrounding',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-breakpad',
+          '--disable-component-extensions-with-background-pages',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+          '--disable-hang-monitor',
+          '--disable-prompt-on-repost',
+          '--disable-sync',
+          '--metrics-recording-only',
+          '--no-first-run',
+          '--safebrowsing-disable-auto-update',
+          '--enable-automation',
+          '--password-store=basic',
+          '--use-mock-keychain',
+        ],
+        timeout: 30000,
+      }
+    }
+    
+    const browser = await puppeteer.launch(launchOptions)
 
     try {
       const page = await browser.newPage()
