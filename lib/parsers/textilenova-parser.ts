@@ -10,6 +10,8 @@ export class TextileNovaParser extends BaseParser {
       throw new Error('Правила парсинга не установлены. Сначала проведите анализ.')
     }
 
+    // Настройки для Puppeteer - одинаковые для локальной и Vercel среды
+    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined
     const browser = await puppeteer.launch({
       headless: true,
       args: [
@@ -17,7 +19,30 @@ export class TextileNovaParser extends BaseParser {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+        '--disable-sync',
+        '--metrics-recording-only',
+        '--no-first-run',
+        '--safebrowsing-disable-auto-update',
+        '--enable-automation',
+        '--password-store=basic',
+        '--use-mock-keychain',
+        ...(isVercel ? [
+          '--single-process', // Важно для Vercel serverless функций
+        ] : []),
       ],
+      timeout: isVercel ? 60000 : 30000, // Больше времени на Vercel для инициализации
     })
 
     try {
@@ -101,9 +126,10 @@ export class TextileNovaParser extends BaseParser {
         }
 
         // Столбец B (индекс 1) - остатки
+        // Обрабатываем только строки с данными в столбцах A и B
         const stockText = row[1]?.toString().trim() || ''
         
-        // Если столбец B пуст, проверяем, не является ли это заголовком коллекции
+        // Если столбец B пуст, пропускаем строку (согласно требованиям: нужны данные в обоих столбцах)
         if (!stockText) {
           // Если в столбце A только название коллекции (без цифр), сохраняем как текущую коллекцию
           if (!/\d/.test(collectionColor)) {
@@ -119,18 +145,25 @@ export class TextileNovaParser extends BaseParser {
           continue
         }
 
-        // Парсим наличие
+        // Парсим наличие согласно требованиям:
+        // "+" -> в наличии
+        // "Ограничено" -> в наличии с комментарием "ВНИМАНИЕ, МАЛО!"
+        // "НЕТ" -> нет в наличии
         let inStock: boolean | null = null
         let comment: string | null = null
-        const stockLower = stockText.toLowerCase()
+        const stockLower = stockText.toLowerCase().trim()
+        const stockUpper = stockText.toUpperCase().trim()
 
-        if (stockLower.includes('+')) {
+        if (stockText.includes('+')) {
           inStock = true
         } else if (stockLower.includes('ограничено') || stockLower.includes('ограниченно')) {
           inStock = true
           comment = 'ВНИМАНИЕ, МАЛО!'
-        } else if (stockLower.includes('нет')) {
+        } else if (stockUpper === 'НЕТ' || stockLower === 'нет') {
           inStock = false
+        } else {
+          // Если не распознано, пропускаем строку (требуются только известные статусы)
+          continue
         }
 
         // Столбец C (индекс 2) - дата следующего поступления
@@ -161,9 +194,11 @@ export class TextileNovaParser extends BaseParser {
         }
 
         // Формируем полное название: если collectionColor уже содержит название коллекции, используем его как есть
-        // Иначе добавляем currentCollection
+        // Иначе добавляем currentCollection только если collectionColor не является полным названием (не содержит пробел и цифру)
         let fullCollectionColor = collectionColor
-        if (currentCollection && !collectionColor.toLowerCase().startsWith(currentCollection.toLowerCase())) {
+        // Проверяем, является ли collectionColor полным названием (содержит пробел и цифру, например "Helena 07")
+        const isFullName = /\s+\d/.test(collectionColor)
+        if (currentCollection && !isFullName && !collectionColor.toLowerCase().startsWith(currentCollection.toLowerCase())) {
           fullCollectionColor = `${currentCollection} ${collectionColor}`.trim()
         }
 
@@ -197,19 +232,31 @@ export class TextileNovaParser extends BaseParser {
         .map(fabric => {
           const { collection, color } = this.parseCollectionAndColor(fabric.collectionColor, rules.specialRules)
           
-          // Парсим дату
+          // Парсим дату из столбца C
+          // Формат может быть: "20/02/26" (DD/MM/YY) или другие форматы
           let nextArrivalDate: Date | null = null
           if (fabric.nextArrivalDateStr) {
+            // Пробуем разные форматы дат
+            // Формат DD/MM/YY или DD/MM/YYYY
             const dateMatch = fabric.nextArrivalDateStr.match(/(\d{1,2})[./](\d{1,2})[./](\d{2,4})/)
             if (dateMatch) {
               const day = parseInt(dateMatch[1])
               const month = parseInt(dateMatch[2]) - 1
               let year = parseInt(dateMatch[3])
+              
               // Для 2-значного года: используем текущий год как ориентир
+              // Если год меньше 30, считаем что это 20XX, иначе 19XX
               if (year < 100) {
                 const currentYear = new Date().getFullYear()
-                const currentCentury = Math.floor(currentYear / 100) * 100
-                year = currentCentury + year
+                if (year <= 30) {
+                  year = 2000 + year
+                } else {
+                  year = 1900 + year
+                }
+                // Если получившийся год в будущем более чем на 1 год, вероятно это прошлый век
+                if (year > currentYear + 1) {
+                  year = year - 100
+                }
               }
               
               // Проверяем валидность даты перед созданием
@@ -221,7 +268,7 @@ export class TextileNovaParser extends BaseParser {
                 }
               }
             } else {
-              // Пробуем стандартный парсинг даты
+              // Пробуем стандартный парсинг даты (для Excel серийных номеров и других форматов)
               const parsed = this.parseDate(fabric.nextArrivalDateStr)
               if (parsed) {
                 nextArrivalDate = this.validateDate(parsed)
@@ -253,6 +300,8 @@ export class TextileNovaParser extends BaseParser {
   }
 
   async analyze(url: string): Promise<ParsingAnalysis> {
+    // Настройки для Puppeteer - одинаковые для локальной и Vercel среды
+    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined
     const browser = await puppeteer.launch({
       headless: true,
       args: [
@@ -260,7 +309,30 @@ export class TextileNovaParser extends BaseParser {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+        '--disable-sync',
+        '--metrics-recording-only',
+        '--no-first-run',
+        '--safebrowsing-disable-auto-update',
+        '--enable-automation',
+        '--password-store=basic',
+        '--use-mock-keychain',
+        ...(isVercel ? [
+          '--single-process', // Важно для Vercel serverless функций
+        ] : []),
       ],
+      timeout: isVercel ? 60000 : 30000, // Больше времени на Vercel для инициализации
     })
 
     try {
