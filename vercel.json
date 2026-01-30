@@ -6,9 +6,6 @@
   },
   "buildCommand": "npm run vercel-build",
   "installCommand": "npm install",
-  "crons": [],
-  "env": {
-    "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "0"
-  }
+  "crons": []
 }
 

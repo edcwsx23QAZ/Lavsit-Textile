@@ -1,4 +1,4 @@
-﻿import { chromium as playwrightChromium } from 'playwright'
+﻿import * as cheerio from 'cheerio'
 import axios from 'axios'
 import * as XLSX from 'xlsx'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
@@ -10,92 +10,73 @@ export class TextileNovaParser extends BaseParser {
       throw new Error('Правила парсинга не установлены. Сначала проведите анализ.')
     }
 
-    // Playwright работает одинаково на локальной и Vercel среде
-    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined || process.env.VERCEL_URL !== undefined
-    
-    console.log(`[TextileNovaParser] Окружение: ${isVercel ? 'Vercel' : 'локальное'}`)
-    console.log(`[TextileNovaParser] Используем Playwright для автоматизации браузера`)
-    
-    // Используем стандартный Playwright
-    // Браузеры должны быть установлены через postinstall скрипт
-    // На Vercel устанавливаем переменную окружения для указания пути к браузерам
-    if (isVercel) {
-      const path = require('path')
-      const cwd = process.cwd()
-      const playwrightCacheDir = path.join(cwd, '.playwright')
-      // Устанавливаем переменную окружения для указания пути к браузерам
-      if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
-        process.env.PLAYWRIGHT_BROWSERS_PATH = playwrightCacheDir
-        console.log(`[TextileNovaParser] Установлен PLAYWRIGHT_BROWSERS_PATH: ${playwrightCacheDir}`)
-      }
-    }
-    
-    const browser = await playwrightChromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process',
-      ],
-    })
-    console.log('[TextileNovaParser] Браузер успешно запущен')
+    console.log(`[TextileNovaParser] Используем Cheerio для парсинга статического HTML`)
+    console.log(`[TextileNovaParser] Загрузка страницы: ${url}`)
 
-    try {
-      const page = await browser.newPage()
-      await page.setExtraHTTPHeaders({
+    // Загружаем HTML страницы с помощью axios
+    const response = await axios.get(url, {
+      headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      })
-      await page.setViewportSize({ width: 1920, height: 1080 })
+      },
+      timeout: 30000,
+    })
 
-      console.log(`[TextileNovaParser] Переход на страницу: ${url}`)
-      await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 })
+    // Парсим HTML с помощью Cheerio
+    const $ = cheerio.load(response.data)
+    console.log('[TextileNovaParser] HTML успешно загружен и распарсен')
 
-      // Ищем ссылку "Получить остатки" (она ведет на Google Sheets)
-      console.log(`[TextileNovaParser] Поиск ссылки "Получить остатки"...`)
-      
-      const sheetUrl = await page.evaluate(() => {
-        // Ищем ссылку по тексту
-        const links = Array.from(document.querySelectorAll('a'))
-        const link = links.find(a => {
-          const text = a.textContent?.toLowerCase() || ''
-          return text.includes('получить остатки') || text.includes('остатки')
-        })
-        
-        return link ? (link as HTMLAnchorElement).href : null
-      })
-
-      if (!sheetUrl) {
-        throw new Error('Ссылка "Получить остатки" не найдена на странице')
+    // Ищем ссылку "Получить остатки" (она ведет на Google Sheets)
+    console.log(`[TextileNovaParser] Поиск ссылки "Получить остатки"...`)
+    
+    let sheetUrl: string | null = null
+    
+    // Ищем все ссылки и проверяем их текст
+    $('a').each((_, element) => {
+      const $link = $(element)
+      const text = $link.text().toLowerCase()
+      if (text.includes('получить остатки') || text.includes('остатки')) {
+        sheetUrl = $link.attr('href') || null
+        // Если ссылка относительная, делаем её абсолютной
+        if (sheetUrl && !sheetUrl.startsWith('http')) {
+          try {
+            const baseUrl = new URL(url)
+            sheetUrl = new URL(sheetUrl, baseUrl.origin).href
+          } catch (e) {
+            console.warn(`[TextileNovaParser] Не удалось преобразовать относительную ссылку: ${sheetUrl}`)
+          }
+        }
+        return false // Прерываем цикл
       }
+    })
 
-      console.log(`[TextileNovaParser] Найдена ссылка на Google Sheets: ${sheetUrl}`)
-      
-      // Конвертируем ссылку на редактирование в ссылку на экспорт в Excel
-      // Формат: https://docs.google.com/spreadsheets/d/{ID}/edit -> https://docs.google.com/spreadsheets/d/{ID}/export?format=xlsx
-      const sheetIdMatch = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
-      if (!sheetIdMatch) {
-        throw new Error('Не удалось извлечь ID таблицы из ссылки')
-      }
+    if (!sheetUrl) {
+      throw new Error('Ссылка "Получить остатки" не найдена на странице')
+    }
 
-      const sheetId = sheetIdMatch[1]
-      const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
-      
-      console.log(`[TextileNovaParser] URL для экспорта: ${exportUrl}`)
-      
-      // Скачиваем Excel файл
-      const axios = (await import('axios')).default
-      const response = await axios.get(exportUrl, { 
-        responseType: 'arraybuffer',
-        timeout: 30000,
-      })
+    console.log(`[TextileNovaParser] Найдена ссылка на Google Sheets: ${sheetUrl}`)
+    
+    // Конвертируем ссылку на редактирование в ссылку на экспорт в Excel
+    // Формат: https://docs.google.com/spreadsheets/d/{ID}/edit -> https://docs.google.com/spreadsheets/d/{ID}/export?format=xlsx
+    const sheetIdMatch = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+    if (!sheetIdMatch) {
+      throw new Error('Не удалось извлечь ID таблицы из ссылки')
+    }
 
-      console.log(`[TextileNovaParser] Файл скачан, размер: ${response.data.length} байт`)
+    const sheetId = sheetIdMatch[1]
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
+    
+    console.log(`[TextileNovaParser] URL для экспорта: ${exportUrl}`)
+    
+    // Скачиваем Excel файл
+    const excelResponse = await axios.get(exportUrl, { 
+      responseType: 'arraybuffer',
+      timeout: 30000,
+    })
 
-      // Парсим Excel файл
-      const XLSX = await import('xlsx')
-      const workbook = XLSX.read(response.data, { type: 'buffer' })
+    console.log(`[TextileNovaParser] Файл скачан, размер: ${excelResponse.data.length} байт`)
+
+    // Парсим Excel файл
+    const workbook = XLSX.read(excelResponse.data, { type: 'buffer' })
       
       // Используем первую вкладку
       const sheetName = workbook.SheetNames[0]
@@ -290,89 +271,69 @@ export class TextileNovaParser extends BaseParser {
         })
         .filter(fabric => fabric.collection || fabric.colorNumber)
 
-      console.log(`[TextileNovaParser] Найдено тканей: ${parsedFabrics.length}`)
-      return parsedFabrics
-
-    } finally {
-      await browser.close()
-    }
+    console.log(`[TextileNovaParser] Найдено тканей: ${parsedFabrics.length}`)
+    return parsedFabrics
   }
 
   async analyze(url: string): Promise<ParsingAnalysis> {
-    // Playwright работает одинаково на локальной и Vercel среде
-    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined || process.env.VERCEL_URL !== undefined
-    
-    console.log(`[TextileNovaParser] Окружение: ${isVercel ? 'Vercel' : 'локальное'}`)
-    console.log(`[TextileNovaParser] Используем Playwright для автоматизации браузера`)
-    
-    // Используем стандартный Playwright
-    // Браузеры должны быть установлены через postinstall скрипт
-    // На Vercel устанавливаем переменную окружения для указания пути к браузерам
-    if (isVercel) {
-      const path = require('path')
-      const cwd = process.cwd()
-      const playwrightCacheDir = path.join(cwd, '.playwright')
-      // Устанавливаем переменную окружения для указания пути к браузерам
-      if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
-        process.env.PLAYWRIGHT_BROWSERS_PATH = playwrightCacheDir
-        console.log(`[TextileNovaParser] Установлен PLAYWRIGHT_BROWSERS_PATH: ${playwrightCacheDir}`)
-      }
-    }
-    
-    const browser = await playwrightChromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process',
-      ],
-    })
-    console.log('[TextileNovaParser] Браузер успешно запущен')
+    console.log(`[TextileNovaParser] Используем Cheerio для парсинга статического HTML`)
+    console.log(`[TextileNovaParser] Анализ страницы: ${url}`)
 
-    try {
-      const page = await browser.newPage()
-      await page.setExtraHTTPHeaders({
+    // Загружаем HTML страницы с помощью axios
+    const response = await axios.get(url, {
+      headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      })
-      await page.setViewportSize({ width: 1920, height: 1080 })
+      },
+      timeout: 30000,
+    })
 
-      console.log(`[TextileNovaParser] Анализ страницы: ${url}`)
-      await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 })
+    // Парсим HTML с помощью Cheerio
+    const $ = cheerio.load(response.data)
+    console.log('[TextileNovaParser] HTML успешно загружен и распарсен')
 
-      // Ищем ссылку на Google Sheets
-      const sheetUrl = await page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll('a'))
-        const link = links.find(a => {
-          const text = a.textContent?.toLowerCase() || ''
-          return text.includes('получить остатки') || text.includes('остатки')
-        })
-        
-        return link ? (link as HTMLAnchorElement).href : null
-      })
-
-      if (!sheetUrl) {
-        throw new Error('Ссылка "Получить остатки" не найдена на странице')
+    // Ищем ссылку на Google Sheets
+    let sheetUrl: string | null = null
+    
+    // Ищем все ссылки и проверяем их текст
+    $('a').each((_, element) => {
+      const $link = $(element)
+      const text = $link.text().toLowerCase()
+      if (text.includes('получить остатки') || text.includes('остатки')) {
+        sheetUrl = $link.attr('href') || null
+        // Если ссылка относительная, делаем её абсолютной
+        if (sheetUrl && !sheetUrl.startsWith('http')) {
+          try {
+            const baseUrl = new URL(url)
+            sheetUrl = new URL(sheetUrl, baseUrl.origin).href
+          } catch (e) {
+            console.warn(`[TextileNovaParser] Не удалось преобразовать относительную ссылку: ${sheetUrl}`)
+          }
+        }
+        return false // Прерываем цикл
       }
+    })
 
-      // Извлекаем ID таблицы и скачиваем Excel
-      const sheetIdMatch = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
-      if (!sheetIdMatch) {
-        throw new Error('Не удалось извлечь ID таблицы из ссылки')
-      }
+    if (!sheetUrl) {
+      throw new Error('Ссылка "Получить остатки" не найдена на странице')
+    }
 
-      const sheetId = sheetIdMatch[1]
-      const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
-      
-      // Скачиваем Excel файл
-      const response = await axios.get(exportUrl, { 
-        responseType: 'arraybuffer',
-        timeout: 30000,
-      })
+    // Извлекаем ID таблицы и скачиваем Excel
+    const sheetIdMatch = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+    if (!sheetIdMatch) {
+      throw new Error('Не удалось извлечь ID таблицы из ссылки')
+    }
 
-      // Парсим Excel
-      const workbook = XLSX.read(response.data, { type: 'buffer' })
+    const sheetId = sheetIdMatch[1]
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
+    
+    // Скачиваем Excel файл
+    const excelResponse = await axios.get(exportUrl, { 
+      responseType: 'arraybuffer',
+      timeout: 30000,
+    })
+
+    // Парсим Excel
+    const workbook = XLSX.read(excelResponse.data, { type: 'buffer' })
       const sheetName = workbook.SheetNames[0]
       const worksheet = workbook.Sheets[sheetName]
       const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][]
@@ -439,10 +400,6 @@ export class TextileNovaParser extends BaseParser {
           headers: hasHeaders ? firstRow.map(String) : undefined,
         },
       }
-
-    } finally {
-      await browser.close()
-    }
   }
 }
 
