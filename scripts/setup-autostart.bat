@@ -56,4 +56,5 @@ echo.
 echo To remove the task, use:
 echo   Unregister-ScheduledTask -TaskName "LavsitTextileLocalParser" -Confirm:$false
 echo.
-pause
+echo Press any key to close this window...
+pause >nul

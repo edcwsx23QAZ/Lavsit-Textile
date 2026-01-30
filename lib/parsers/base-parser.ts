@@ -509,16 +509,31 @@ export abstract class BaseParser {
   ): Promise<T> {
     try {
       // Пытаемся выполнить на Vercel
+      console.log(`[${this.constructor.name}] Attempting to parse on Vercel...`)
       return await vercelOperation()
     } catch (vercelError: any) {
-      console.error(`[${this.constructor.name}] Ошибка на Vercel, пробуем локальный парсер:`, vercelError.message)
+      console.error(`[${this.constructor.name}] Error on Vercel, trying local parser:`, vercelError.message)
+      console.error(`[${this.constructor.name}] Error stack:`, vercelError.stack)
+      
+      // Проверяем, настроен ли локальный парсер
+      const localParserUrl = process.env.LOCAL_PARSER_URL
+      if (!localParserUrl) {
+        console.warn(`[${this.constructor.name}] LOCAL_PARSER_URL is not set, skipping fallback`)
+        throw vercelError
+      }
+      
+      console.log(`[${this.constructor.name}] LOCAL_PARSER_URL is set: ${localParserUrl}`)
       
       try {
         // Fallback на локальный парсер
-        return await fallbackOperation()
+        console.log(`[${this.constructor.name}] Attempting fallback to local parser...`)
+        const result = await fallbackOperation()
+        console.log(`[${this.constructor.name}] Local parser succeeded!`)
+        return result
       } catch (fallbackError: any) {
         // Если и локальный парсер не сработал, возвращаем исходную ошибку
-        console.error(`[${this.constructor.name}] Локальный парсер тоже не сработал:`, fallbackError.message)
+        console.error(`[${this.constructor.name}] Local parser also failed:`, fallbackError.message)
+        console.error(`[${this.constructor.name}] Fallback error stack:`, fallbackError.stack)
         throw vercelError // Возвращаем исходную ошибку с Vercel
       }
     }
