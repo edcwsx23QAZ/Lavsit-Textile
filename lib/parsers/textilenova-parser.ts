@@ -41,9 +41,8 @@ export class TextileNovaParser extends BaseParser {
           
           launchOptions = {
             args: chromium.args,
-            defaultViewport: chromium.defaultViewport,
             executablePath,
-            headless: chromium.headless,
+            headless: true,
             ignoreHTTPSErrors: true,
           }
         } catch (error: any) {
@@ -387,9 +386,8 @@ export class TextileNovaParser extends BaseParser {
           
           launchOptions = {
             args: chromium.args,
-            defaultViewport: chromium.defaultViewport,
             executablePath,
-            headless: chromium.headless,
+            headless: true,
             ignoreHTTPSErrors: true,
           }
         } catch (error: any) {
