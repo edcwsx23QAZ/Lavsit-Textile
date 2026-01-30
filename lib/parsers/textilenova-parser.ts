@@ -44,75 +44,48 @@ export class TextileNovaParser extends BaseParser {
     // Настройка для Vercel с использованием @sparticuz/chromium
     let launchOptions: any
     let puppeteerInstance: any = puppeteer
-    let usePuppeteerCore = false
     
     if (isVercel) {
+      // На Vercel ВСЕГДА используем puppeteer-core с chromium
+      // Обычный puppeteer не работает на Vercel, так как Chrome не установлен
+      console.log('[TextileNovaParser] На Vercel - используем puppeteer-core с chromium')
+      puppeteerInstance = await getPuppeteer(true)
+      
       // Пытаемся использовать chromium на Vercel
       const chromium = await getChromium()
       console.log(`[TextileNovaParser] chromium получен: ${chromium ? 'да' : 'нет'}`)
       
-      if (chromium) {
-        try {
-          console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
-          const executablePath = await chromium.executablePath()
-          console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
-          
-          if (!executablePath) {
-            throw new Error('executablePath вернул null или undefined')
-          }
-          
-          // Если есть executablePath, используем puppeteer-core
-          puppeteerInstance = await getPuppeteer(true)
-          usePuppeteerCore = true
-          console.log('[TextileNovaParser] Используем puppeteer-core с chromium')
-          
-          launchOptions = {
-            args: chromium.args || [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--single-process',
-            ],
-            executablePath,
-            headless: true,
-            ignoreHTTPSErrors: true,
-          }
-          console.log('[TextileNovaParser] Launch options настроены с chromium')
-        } catch (error: any) {
-          // Если не удалось использовать chromium, используем стандартный puppeteer
-          console.error('[TextileNovaParser] Ошибка при использовании chromium:', error?.message || error)
-          console.log('[TextileNovaParser] Fallback на стандартный puppeteer (не puppeteer-core)')
-          puppeteerInstance = puppeteer
-          usePuppeteerCore = false
-          launchOptions = {
-            headless: true,
-            args: [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--single-process',
-            ],
-            timeout: 60000,
-          }
+      if (!chromium) {
+        throw new Error('@sparticuz/chromium не доступен на Vercel. Убедитесь, что пакет установлен в package.json')
+      }
+      
+      try {
+        console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
+        const executablePath = await chromium.executablePath()
+        console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
+        
+        if (!executablePath) {
+          throw new Error('executablePath вернул null или undefined. Chromium не может предоставить путь к Chrome.')
         }
-      } else {
-        // chromium не доступен, используем стандартный puppeteer (не puppeteer-core)
-        console.log('[TextileNovaParser] chromium не доступен, используем стандартный puppeteer (не puppeteer-core)')
-        puppeteerInstance = puppeteer
-        usePuppeteerCore = false
+        
         launchOptions = {
-          headless: true,
-          args: [
+          args: chromium.args || [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--single-process',
           ],
-          timeout: 60000,
+          executablePath,
+          headless: true,
+          ignoreHTTPSErrors: true,
         }
+        console.log('[TextileNovaParser] Launch options настроены с chromium')
+      } catch (error: any) {
+        // На Vercel без chromium мы не можем работать
+        const errorMessage = `Не удалось получить executablePath от @sparticuz/chromium на Vercel: ${error?.message || error}`
+        console.error(`[TextileNovaParser] ${errorMessage}`)
+        throw new Error(errorMessage)
       }
     } else {
       // Стандартные настройки для локальной среды
@@ -147,7 +120,7 @@ export class TextileNovaParser extends BaseParser {
       }
     }
     
-    console.log(`[TextileNovaParser] Используем ${usePuppeteerCore ? 'puppeteer-core' : 'puppeteer'}`)
+    console.log(`[TextileNovaParser] Используем ${isVercel ? 'puppeteer-core' : 'puppeteer'}`)
     console.log('[TextileNovaParser] Запускаем браузер с опциями:', JSON.stringify(launchOptions, null, 2))
     const browser = await puppeteerInstance.launch(launchOptions)
     console.log('[TextileNovaParser] Браузер успешно запущен')
@@ -416,75 +389,48 @@ export class TextileNovaParser extends BaseParser {
     // Настройка для Vercel с использованием @sparticuz/chromium
     let launchOptions: any
     let puppeteerInstance: any = puppeteer
-    let usePuppeteerCore = false
     
     if (isVercel) {
+      // На Vercel ВСЕГДА используем puppeteer-core с chromium
+      // Обычный puppeteer не работает на Vercel, так как Chrome не установлен
+      console.log('[TextileNovaParser] На Vercel - используем puppeteer-core с chromium')
+      puppeteerInstance = await getPuppeteer(true)
+      
       // Пытаемся использовать chromium на Vercel
       const chromium = await getChromium()
       console.log(`[TextileNovaParser] chromium получен: ${chromium ? 'да' : 'нет'}`)
       
-      if (chromium) {
-        try {
-          console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
-          const executablePath = await chromium.executablePath()
-          console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
-          
-          if (!executablePath) {
-            throw new Error('executablePath вернул null или undefined')
-          }
-          
-          // Если есть executablePath, используем puppeteer-core
-          puppeteerInstance = await getPuppeteer(true)
-          usePuppeteerCore = true
-          console.log('[TextileNovaParser] Используем puppeteer-core с chromium')
-          
-          launchOptions = {
-            args: chromium.args || [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--single-process',
-            ],
-            executablePath,
-            headless: true,
-            ignoreHTTPSErrors: true,
-          }
-          console.log('[TextileNovaParser] Launch options настроены с chromium')
-        } catch (error: any) {
-          // Если не удалось использовать chromium, используем стандартный puppeteer
-          console.error('[TextileNovaParser] Ошибка при использовании chromium:', error?.message || error)
-          console.log('[TextileNovaParser] Fallback на стандартный puppeteer (не puppeteer-core)')
-          puppeteerInstance = puppeteer
-          usePuppeteerCore = false
-          launchOptions = {
-            headless: true,
-            args: [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--single-process',
-            ],
-            timeout: 60000,
-          }
+      if (!chromium) {
+        throw new Error('@sparticuz/chromium не доступен на Vercel. Убедитесь, что пакет установлен в package.json')
+      }
+      
+      try {
+        console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
+        const executablePath = await chromium.executablePath()
+        console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
+        
+        if (!executablePath) {
+          throw new Error('executablePath вернул null или undefined. Chromium не может предоставить путь к Chrome.')
         }
-      } else {
-        // chromium не доступен, используем стандартный puppeteer (не puppeteer-core)
-        console.log('[TextileNovaParser] chromium не доступен, используем стандартный puppeteer (не puppeteer-core)')
-        puppeteerInstance = puppeteer
-        usePuppeteerCore = false
+        
         launchOptions = {
-          headless: true,
-          args: [
+          args: chromium.args || [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--single-process',
           ],
-          timeout: 60000,
+          executablePath,
+          headless: true,
+          ignoreHTTPSErrors: true,
         }
+        console.log('[TextileNovaParser] Launch options настроены с chromium')
+      } catch (error: any) {
+        // На Vercel без chromium мы не можем работать
+        const errorMessage = `Не удалось получить executablePath от @sparticuz/chromium на Vercel: ${error?.message || error}`
+        console.error(`[TextileNovaParser] ${errorMessage}`)
+        throw new Error(errorMessage)
       }
     } else {
       // Стандартные настройки для локальной среды
@@ -519,7 +465,7 @@ export class TextileNovaParser extends BaseParser {
       }
     }
     
-    console.log(`[TextileNovaParser] Используем ${usePuppeteerCore ? 'puppeteer-core' : 'puppeteer'}`)
+    console.log(`[TextileNovaParser] Используем ${isVercel ? 'puppeteer-core' : 'puppeteer'}`)
     console.log('[TextileNovaParser] Запускаем браузер с опциями:', JSON.stringify(launchOptions, null, 2))
     const browser = await puppeteerInstance.launch(launchOptions)
     console.log('[TextileNovaParser] Браузер успешно запущен')
