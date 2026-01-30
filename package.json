@@ -76,6 +76,7 @@
     "mailparser": "^3.6.5",
     "next": "^14.2.30",
     "puppeteer": "^24.34.0",
+    "playwright": "^1.48.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.54.0",

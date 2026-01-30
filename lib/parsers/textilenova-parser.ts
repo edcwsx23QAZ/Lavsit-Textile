@@ -1,132 +1,7 @@
-﻿import puppeteer from 'puppeteer'
+﻿import { chromium as playwrightChromium } from 'playwright'
 import axios from 'axios'
 import * as XLSX from 'xlsx'
 import { BaseParser, ParsedFabric, ParsingAnalysis, ParsingRules } from './base-parser'
-
-// Функция для получения chromium (динамический импорт для Vercel)
-async function getChromium() {
-  try {
-    // На Vercel устанавливаем переменную окружения перед импортом
-    // Это помогает chromium найти brotli файлы
-    if (process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined) {
-      try {
-        const path = require('path')
-        const fs = require('fs')
-        
-        // Пробуем найти путь к пакету chromium
-        const possiblePaths = [
-          path.join(process.cwd(), 'node_modules', '@sparticuz', 'chromium'),
-          path.dirname(require.resolve('@sparticuz/chromium')),
-        ]
-        
-        for (const chromiumPath of possiblePaths) {
-          if (fs.existsSync(chromiumPath)) {
-            // Устанавливаем переменную окружения для указания пути к пакету
-            // @sparticuz/chromium будет искать brotli файлы в подпапке bin
-            if (!process.env.CHROMIUM_PATH) {
-              process.env.CHROMIUM_PATH = chromiumPath
-              console.log(`[TextileNovaParser] Установлен CHROMIUM_PATH: ${chromiumPath}`)
-            }
-            break
-          }
-        }
-      } catch (pathError) {
-        console.log(`[TextileNovaParser] Не удалось установить CHROMIUM_PATH: ${pathError}`)
-      }
-    }
-    
-    const chromium = await import('@sparticuz/chromium')
-    const chromiumModule = chromium.default || chromium
-    
-    return chromiumModule
-  } catch (e) {
-    console.log('[TextileNovaParser] @sparticuz/chromium не доступен:', e)
-    return null
-  }
-}
-
-// Функция для получения пути к директории с brotli файлами
-// На Vercel @sparticuz/chromium может искать brotli файлы в разных местах
-function getChromiumBrotliPath(): string | null {
-  try {
-    const path = require('path')
-    const fs = require('fs')
-    
-    // Пробуем несколько способов определения пути
-    const possiblePaths: string[] = []
-    
-    try {
-      // Способ 1: через require.resolve - получаем путь к корневой директории пакета
-      const chromiumPath = require.resolve('@sparticuz/chromium')
-      const chromiumDir = path.dirname(chromiumPath)
-      possiblePaths.push(chromiumDir)
-      console.log(`[TextileNovaParser] Путь 1 (корневая директория пакета): ${chromiumDir}`)
-    } catch (e) {
-      console.log(`[TextileNovaParser] Не удалось определить путь через require.resolve: ${e}`)
-    }
-    
-    try {
-      // Способ 2: через process.cwd() - ищем node_modules/@sparticuz/chromium
-      const cwd = process.cwd()
-      const chromiumPackagePath = path.join(cwd, 'node_modules', '@sparticuz', 'chromium')
-      possiblePaths.push(chromiumPackagePath)
-      console.log(`[TextileNovaParser] Путь 2 (через process.cwd): ${chromiumPackagePath}`)
-    } catch (e) {
-      console.log(`[TextileNovaParser] Не удалось определить путь через process.cwd: ${e}`)
-    }
-    
-    // Ищем существующую директорию с bin подпапкой, содержащей brotli файлы
-    // На Vercel структура может отличаться, поэтому проверяем оба варианта
-    for (const chromiumDir of possiblePaths) {
-      if (fs.existsSync(chromiumDir)) {
-        const binDir = path.join(chromiumDir, 'bin')
-        
-        // Проверяем наличие bin директории и хотя бы одного brotli файла
-        if (fs.existsSync(binDir)) {
-          const chromiumBr = path.join(binDir, 'chromium.br')
-          if (fs.existsSync(chromiumBr)) {
-            console.log(`[TextileNovaParser] ✅ Найдена директория bin с brotli файлами: ${binDir}`)
-            // Возвращаем путь к bin директории, так как @sparticuz/chromium может ожидать именно его
-            return binDir
-          } else {
-            console.log(`[TextileNovaParser] ⚠️ Директория bin найдена, но chromium.br отсутствует: ${binDir}`)
-            // Все равно возвращаем bin, может быть файлы в другом формате
-            return binDir
-          }
-        } else {
-          console.log(`[TextileNovaParser] ⚠️ Директория bin не найдена в: ${chromiumDir}`)
-        }
-      }
-    }
-    
-    // Если не нашли bin, возвращаем первый существующий путь к пакету
-    for (const chromiumDir of possiblePaths) {
-      if (fs.existsSync(chromiumDir)) {
-        console.log(`[TextileNovaParser] ⚠️ Используем путь к пакету без проверки bin: ${chromiumDir}`)
-        return chromiumDir
-      }
-    }
-    
-    return null
-  } catch (e) {
-    console.log(`[TextileNovaParser] Ошибка при определении пути к brotli: ${e}`)
-    return null
-  }
-}
-
-// Функция для получения puppeteer (puppeteer-core на Vercel)
-async function getPuppeteer(isVercel: boolean) {
-  if (isVercel) {
-    try {
-      const puppeteerCore = await import('puppeteer-core')
-      return puppeteerCore.default || puppeteerCore
-    } catch (e) {
-      console.log('[TextileNovaParser] puppeteer-core не доступен, используем puppeteer:', e)
-      return puppeteer
-    }
-  }
-  return puppeteer
-}
 
 export class TextileNovaParser extends BaseParser {
   async parse(url: string): Promise<ParsedFabric[]> {
@@ -135,168 +10,34 @@ export class TextileNovaParser extends BaseParser {
       throw new Error('Правила парсинга не установлены. Сначала проведите анализ.')
     }
 
-    // Настройки для Puppeteer - одинаковые для локальной и Vercel среды
+    // Playwright работает одинаково на локальной и Vercel среде
     const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined || process.env.VERCEL_URL !== undefined
     
     console.log(`[TextileNovaParser] Окружение: ${isVercel ? 'Vercel' : 'локальное'}`)
-    console.log(`[TextileNovaParser] VERCEL=${process.env.VERCEL}, VERCEL_ENV=${process.env.VERCEL_ENV}, VERCEL_URL=${process.env.VERCEL_URL}`)
+    console.log(`[TextileNovaParser] Используем Playwright для автоматизации браузера`)
     
-    // Настройка для Vercel с использованием @sparticuz/chromium
-    let launchOptions: any
-    let puppeteerInstance: any = puppeteer
-    
-    if (isVercel) {
-      // На Vercel ВСЕГДА используем puppeteer-core с chromium
-      // Обычный puppeteer не работает на Vercel, так как Chrome не установлен
-      console.log('[TextileNovaParser] На Vercel - используем puppeteer-core с chromium')
-      puppeteerInstance = await getPuppeteer(true)
-      
-      // Пытаемся использовать chromium на Vercel
-      const chromium = await getChromium()
-      console.log(`[TextileNovaParser] chromium получен: ${chromium ? 'да' : 'нет'}`)
-      
-      if (!chromium) {
-        throw new Error('@sparticuz/chromium не доступен на Vercel. Убедитесь, что пакет установлен в package.json')
-      }
-      
-      try {
-        console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
-        
-        // На Vercel используем стандартный вызов executablePath() без параметров
-        // @sparticuz/chromium должен сам найти brotli файлы
-        let executablePath: string | null = null
-        
-        // Логируем текущее состояние переменных окружения
-        console.log(`[TextileNovaParser] CHROMIUM_PATH=${process.env.CHROMIUM_PATH || 'не установлен'}`)
-        console.log(`[TextileNovaParser] process.cwd()=${process.cwd()}`)
-        console.log(`[TextileNovaParser] __dirname=${typeof __dirname !== 'undefined' ? __dirname : 'не доступен'}`)
-        
-        // На Vercel @sparticuz/chromium должен сам найти brotli файлы
-        // Не устанавливаем CHROMIUM_PATH, так как это может мешать встроенной логике
-        console.log(`[TextileNovaParser] Вызываем executablePath() без параметров (полагаемся на встроенную логику)...`)
-        
-        try {
-          // Стандартный вызов без параметров - @sparticuz/chromium сам найдет brotli файлы
-          // Он ищет их относительно своего расположения в node_modules
-          executablePath = await chromium.executablePath()
-          console.log(`[TextileNovaParser] ✅ Chrome executable path получен: ${executablePath}`)
-        } catch (defaultError: any) {
-          console.error(`[TextileNovaParser] ❌ Ошибка при вызове executablePath без параметров: ${defaultError?.message}`)
-          console.error(`[TextileNovaParser] Stack trace: ${defaultError?.stack}`)
-          
-          // Если стандартный вызов не работает, пробуем найти путь к пакету и передать его
-          const path = require('path')
-          const fs = require('fs')
-          
-          let chromiumPackagePath: string | null = null
-          
-          // Пробуем найти корневую директорию пакета chromium
-          try {
-            const chromiumResolvePath = require.resolve('@sparticuz/chromium')
-            chromiumPackagePath = path.dirname(chromiumResolvePath)
-            console.log(`[TextileNovaParser] Найден путь к пакету через require.resolve: ${chromiumPackagePath}`)
-          } catch (e) {
-            console.log(`[TextileNovaParser] Не удалось найти путь через require.resolve: ${e}`)
-          }
-          
-          if (!chromiumPackagePath) {
-            try {
-              const cwd = process.cwd()
-              chromiumPackagePath = path.join(cwd, 'node_modules', '@sparticuz', 'chromium')
-              if (fs.existsSync(chromiumPackagePath)) {
-                console.log(`[TextileNovaParser] Найден путь к пакету через process.cwd: ${chromiumPackagePath}`)
-              } else {
-                chromiumPackagePath = null
-              }
-            } catch (e) {
-              console.log(`[TextileNovaParser] Не удалось найти путь через process.cwd: ${e}`)
-            }
-          }
-          
-          if (chromiumPackagePath) {
-            console.log(`[TextileNovaParser] Пробуем передать путь к корневой директории пакета: ${chromiumPackagePath}`)
-            try {
-              // Передаем путь к корневой директории пакета (не к bin!)
-              // @sparticuz/chromium сам найдет bin внутри этой директории
-              executablePath = await chromium.executablePath(chromiumPackagePath)
-              console.log(`[TextileNovaParser] ✅ Chrome executable path получен (с путем к пакету): ${executablePath}`)
-            } catch (packagePathError: any) {
-              console.error(`[TextileNovaParser] ❌ Ошибка при вызове executablePath с путем к пакету: ${packagePathError?.message}`)
-              throw new Error(`Не удалось получить executablePath от @sparticuz/chromium на Vercel. Стандартный вызов: ${defaultError?.message}, С путем к пакету: ${packagePathError?.message}`)
-            }
-          } else {
-            throw new Error(`Не удалось получить executablePath от @sparticuz/chromium на Vercel. Путь к пакету не найден. Ошибка: ${defaultError?.message}`)
-          }
-        }
-        
-        if (!executablePath) {
-          throw new Error('executablePath вернул null или undefined. Chromium не может предоставить путь к Chrome.')
-        }
-        
-        launchOptions = {
-          args: chromium.args || [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--single-process',
-          ],
-          executablePath,
-          headless: true,
-          ignoreHTTPSErrors: true,
-        }
-        console.log('[TextileNovaParser] Launch options настроены с chromium')
-      } catch (error: any) {
-        // На Vercel без chromium мы не можем работать
-        const errorMessage = `Не удалось получить executablePath от @sparticuz/chromium на Vercel: ${error?.message || error}`
-        console.error(`[TextileNovaParser] ${errorMessage}`)
-        throw new Error(errorMessage)
-      }
-    } else {
-      // Стандартные настройки для локальной среды
-      launchOptions = {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--disable-extensions',
-          '--disable-background-networking',
-          '--disable-background-timer-throttling',
-          '--disable-renderer-backgrounding',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-breakpad',
-          '--disable-component-extensions-with-background-pages',
-          '--disable-features=TranslateUI',
-          '--disable-ipc-flooding-protection',
-          '--disable-hang-monitor',
-          '--disable-prompt-on-repost',
-          '--disable-sync',
-          '--metrics-recording-only',
-          '--no-first-run',
-          '--safebrowsing-disable-auto-update',
-          '--enable-automation',
-          '--password-store=basic',
-          '--use-mock-keychain',
-        ],
-        timeout: 30000,
-      }
-    }
-    
-    console.log(`[TextileNovaParser] Используем ${isVercel ? 'puppeteer-core' : 'puppeteer'}`)
-    console.log('[TextileNovaParser] Запускаем браузер с опциями:', JSON.stringify(launchOptions, null, 2))
-    const browser = await puppeteerInstance.launch(launchOptions)
+    // Playwright имеет встроенную поддержку для Vercel и не требует дополнительных настроек
+    const browser = await playwrightChromium.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process',
+      ],
+    })
     console.log('[TextileNovaParser] Браузер успешно запущен')
 
     try {
       const page = await browser.newPage()
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-      await page.setViewport({ width: 1920, height: 1080 })
+      await page.setExtraHTTPHeaders({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      })
+      await page.setViewportSize({ width: 1920, height: 1080 })
 
       console.log(`[TextileNovaParser] Переход на страницу: ${url}`)
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+      await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 })
 
       // Ищем ссылку "Получить остатки" (она ведет на Google Sheets)
       console.log(`[TextileNovaParser] Поиск ссылки "Получить остатки"...`)
@@ -545,168 +286,34 @@ export class TextileNovaParser extends BaseParser {
   }
 
   async analyze(url: string): Promise<ParsingAnalysis> {
-    // Настройки для Puppeteer - одинаковые для локальной и Vercel среды
+    // Playwright работает одинаково на локальной и Vercel среде
     const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined || process.env.VERCEL_URL !== undefined
     
     console.log(`[TextileNovaParser] Окружение: ${isVercel ? 'Vercel' : 'локальное'}`)
-    console.log(`[TextileNovaParser] VERCEL=${process.env.VERCEL}, VERCEL_ENV=${process.env.VERCEL_ENV}, VERCEL_URL=${process.env.VERCEL_URL}`)
+    console.log(`[TextileNovaParser] Используем Playwright для автоматизации браузера`)
     
-    // Настройка для Vercel с использованием @sparticuz/chromium
-    let launchOptions: any
-    let puppeteerInstance: any = puppeteer
-    
-    if (isVercel) {
-      // На Vercel ВСЕГДА используем puppeteer-core с chromium
-      // Обычный puppeteer не работает на Vercel, так как Chrome не установлен
-      console.log('[TextileNovaParser] На Vercel - используем puppeteer-core с chromium')
-      puppeteerInstance = await getPuppeteer(true)
-      
-      // Пытаемся использовать chromium на Vercel
-      const chromium = await getChromium()
-      console.log(`[TextileNovaParser] chromium получен: ${chromium ? 'да' : 'нет'}`)
-      
-      if (!chromium) {
-        throw new Error('@sparticuz/chromium не доступен на Vercel. Убедитесь, что пакет установлен в package.json')
-      }
-      
-      try {
-        console.log('[TextileNovaParser] Используем @sparticuz/chromium для Vercel')
-        
-        // На Vercel используем стандартный вызов executablePath() без параметров
-        // @sparticuz/chromium должен сам найти brotli файлы
-        let executablePath: string | null = null
-        
-        // Логируем текущее состояние переменных окружения
-        console.log(`[TextileNovaParser] CHROMIUM_PATH=${process.env.CHROMIUM_PATH || 'не установлен'}`)
-        console.log(`[TextileNovaParser] process.cwd()=${process.cwd()}`)
-        console.log(`[TextileNovaParser] __dirname=${typeof __dirname !== 'undefined' ? __dirname : 'не доступен'}`)
-        
-        // На Vercel @sparticuz/chromium должен сам найти brotli файлы
-        // Не устанавливаем CHROMIUM_PATH, так как это может мешать встроенной логике
-        console.log(`[TextileNovaParser] Вызываем executablePath() без параметров (полагаемся на встроенную логику)...`)
-        
-        try {
-          // Стандартный вызов без параметров - @sparticuz/chromium сам найдет brotli файлы
-          // Он ищет их относительно своего расположения в node_modules
-          executablePath = await chromium.executablePath()
-          console.log(`[TextileNovaParser] ✅ Chrome executable path получен: ${executablePath}`)
-        } catch (defaultError: any) {
-          console.error(`[TextileNovaParser] ❌ Ошибка при вызове executablePath без параметров: ${defaultError?.message}`)
-          console.error(`[TextileNovaParser] Stack trace: ${defaultError?.stack}`)
-          
-          // Если стандартный вызов не работает, пробуем найти путь к пакету и передать его
-          const path = require('path')
-          const fs = require('fs')
-          
-          let chromiumPackagePath: string | null = null
-          
-          // Пробуем найти корневую директорию пакета chromium
-          try {
-            const chromiumResolvePath = require.resolve('@sparticuz/chromium')
-            chromiumPackagePath = path.dirname(chromiumResolvePath)
-            console.log(`[TextileNovaParser] Найден путь к пакету через require.resolve: ${chromiumPackagePath}`)
-          } catch (e) {
-            console.log(`[TextileNovaParser] Не удалось найти путь через require.resolve: ${e}`)
-          }
-          
-          if (!chromiumPackagePath) {
-            try {
-              const cwd = process.cwd()
-              chromiumPackagePath = path.join(cwd, 'node_modules', '@sparticuz', 'chromium')
-              if (fs.existsSync(chromiumPackagePath)) {
-                console.log(`[TextileNovaParser] Найден путь к пакету через process.cwd: ${chromiumPackagePath}`)
-              } else {
-                chromiumPackagePath = null
-              }
-            } catch (e) {
-              console.log(`[TextileNovaParser] Не удалось найти путь через process.cwd: ${e}`)
-            }
-          }
-          
-          if (chromiumPackagePath) {
-            console.log(`[TextileNovaParser] Пробуем передать путь к корневой директории пакета: ${chromiumPackagePath}`)
-            try {
-              // Передаем путь к корневой директории пакета (не к bin!)
-              // @sparticuz/chromium сам найдет bin внутри этой директории
-              executablePath = await chromium.executablePath(chromiumPackagePath)
-              console.log(`[TextileNovaParser] ✅ Chrome executable path получен (с путем к пакету): ${executablePath}`)
-            } catch (packagePathError: any) {
-              console.error(`[TextileNovaParser] ❌ Ошибка при вызове executablePath с путем к пакету: ${packagePathError?.message}`)
-              throw new Error(`Не удалось получить executablePath от @sparticuz/chromium на Vercel. Стандартный вызов: ${defaultError?.message}, С путем к пакету: ${packagePathError?.message}`)
-            }
-          } else {
-            throw new Error(`Не удалось получить executablePath от @sparticuz/chromium на Vercel. Путь к пакету не найден. Ошибка: ${defaultError?.message}`)
-          }
-        }
-        
-        if (!executablePath) {
-          throw new Error('executablePath вернул null или undefined. Chromium не может предоставить путь к Chrome.')
-        }
-        
-        launchOptions = {
-          args: chromium.args || [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--single-process',
-          ],
-          executablePath,
-          headless: true,
-          ignoreHTTPSErrors: true,
-        }
-        console.log('[TextileNovaParser] Launch options настроены с chromium')
-      } catch (error: any) {
-        // На Vercel без chromium мы не можем работать
-        const errorMessage = `Не удалось получить executablePath от @sparticuz/chromium на Vercel: ${error?.message || error}`
-        console.error(`[TextileNovaParser] ${errorMessage}`)
-        throw new Error(errorMessage)
-      }
-    } else {
-      // Стандартные настройки для локальной среды
-      launchOptions = {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--disable-extensions',
-          '--disable-background-networking',
-          '--disable-background-timer-throttling',
-          '--disable-renderer-backgrounding',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-breakpad',
-          '--disable-component-extensions-with-background-pages',
-          '--disable-features=TranslateUI',
-          '--disable-ipc-flooding-protection',
-          '--disable-hang-monitor',
-          '--disable-prompt-on-repost',
-          '--disable-sync',
-          '--metrics-recording-only',
-          '--no-first-run',
-          '--safebrowsing-disable-auto-update',
-          '--enable-automation',
-          '--password-store=basic',
-          '--use-mock-keychain',
-        ],
-        timeout: 30000,
-      }
-    }
-    
-    console.log(`[TextileNovaParser] Используем ${isVercel ? 'puppeteer-core' : 'puppeteer'}`)
-    console.log('[TextileNovaParser] Запускаем браузер с опциями:', JSON.stringify(launchOptions, null, 2))
-    const browser = await puppeteerInstance.launch(launchOptions)
+    // Playwright имеет встроенную поддержку для Vercel и не требует дополнительных настроек
+    const browser = await playwrightChromium.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process',
+      ],
+    })
     console.log('[TextileNovaParser] Браузер успешно запущен')
 
     try {
       const page = await browser.newPage()
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-      await page.setViewport({ width: 1920, height: 1080 })
+      await page.setExtraHTTPHeaders({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      })
+      await page.setViewportSize({ width: 1920, height: 1080 })
 
       console.log(`[TextileNovaParser] Анализ страницы: ${url}`)
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+      await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 })
 
       // Ищем ссылку на Google Sheets
       const sheetUrl = await page.evaluate(() => {
