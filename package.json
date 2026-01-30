@@ -52,6 +52,8 @@
     "local-parser:start": "powershell -ExecutionPolicy Bypass -File scripts/start-local-parser-simple.ps1",
     "local-parser:setup": "powershell -ExecutionPolicy Bypass -File scripts/setup-autostart-local-parser.ps1",
     "local-parser:check": "powershell -ExecutionPolicy Bypass -File scripts/check-autostart.ps1",
+    "local-parser:test": "powershell -ExecutionPolicy Bypass -File scripts/test-local-parser.ps1",
+    "local-parser:diagnose": "powershell -ExecutionPolicy Bypass -File scripts/diagnose-fallback.ps1",
     "local-parser:url": "powershell -ExecutionPolicy Bypass -File scripts/get-tunnel-url.ps1"
   },
   "dependencies": {
