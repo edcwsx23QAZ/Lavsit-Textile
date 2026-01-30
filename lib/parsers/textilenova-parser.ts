@@ -14,6 +14,20 @@ async function getChromium() {
   }
 }
 
+// Функция для получения puppeteer (puppeteer-core на Vercel)
+async function getPuppeteer(isVercel: boolean) {
+  if (isVercel) {
+    try {
+      const puppeteerCore = await import('puppeteer-core')
+      return puppeteerCore.default || puppeteerCore
+    } catch (e) {
+      console.log('[TextileNovaParser] puppeteer-core не доступен, используем puppeteer:', e)
+      return puppeteer
+    }
+  }
+  return puppeteer
+}
+
 export class TextileNovaParser extends BaseParser {
   async parse(url: string): Promise<ParsedFabric[]> {
     const rules = await this.loadRules()
@@ -109,7 +123,9 @@ export class TextileNovaParser extends BaseParser {
       }
     }
     
-    const browser = await puppeteer.launch(launchOptions)
+    console.log('[TextileNovaParser] Запускаем браузер с опциями:', JSON.stringify(launchOptions, null, 2))
+    const browser = await puppeteerInstance.launch(launchOptions)
+    console.log('[TextileNovaParser] Браузер успешно запущен')
 
     try {
       const page = await browser.newPage()
@@ -370,6 +386,11 @@ export class TextileNovaParser extends BaseParser {
     const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined || process.env.VERCEL_URL !== undefined
     
     console.log(`[TextileNovaParser] Окружение: ${isVercel ? 'Vercel' : 'локальное'}`)
+    console.log(`[TextileNovaParser] VERCEL=${process.env.VERCEL}, VERCEL_ENV=${process.env.VERCEL_ENV}, VERCEL_URL=${process.env.VERCEL_URL}`)
+    
+    // Получаем правильную версию puppeteer
+    const puppeteerInstance = await getPuppeteer(isVercel)
+    console.log(`[TextileNovaParser] Используем ${isVercel ? 'puppeteer-core' : 'puppeteer'}`)
     
     // Настройка для Vercel с использованием @sparticuz/chromium
     let launchOptions: any
@@ -377,6 +398,7 @@ export class TextileNovaParser extends BaseParser {
     if (isVercel) {
       // Пытаемся использовать chromium на Vercel
       const chromium = await getChromium()
+      console.log(`[TextileNovaParser] chromium получен: ${chromium ? 'да' : 'нет'}`)
       
       if (chromium) {
         try {
@@ -384,12 +406,23 @@ export class TextileNovaParser extends BaseParser {
           const executablePath = await chromium.executablePath()
           console.log(`[TextileNovaParser] Chrome executable path: ${executablePath}`)
           
+          if (!executablePath) {
+            throw new Error('executablePath вернул null или undefined')
+          }
+          
           launchOptions = {
-            args: chromium.args,
+            args: chromium.args || [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu',
+              '--single-process',
+            ],
             executablePath,
             headless: true,
             ignoreHTTPSErrors: true,
           }
+          console.log('[TextileNovaParser] Launch options настроены с chromium')
         } catch (error: any) {
           // Если не удалось использовать chromium, используем стандартный puppeteer
           console.error('[TextileNovaParser] Ошибка при использовании chromium:', error?.message || error)
@@ -454,7 +487,9 @@ export class TextileNovaParser extends BaseParser {
       }
     }
     
-    const browser = await puppeteer.launch(launchOptions)
+    console.log('[TextileNovaParser] Запускаем браузер с опциями:', JSON.stringify(launchOptions, null, 2))
+    const browser = await puppeteerInstance.launch(launchOptions)
+    console.log('[TextileNovaParser] Браузер успешно запущен')
 
     try {
       const page = await browser.newPage()
