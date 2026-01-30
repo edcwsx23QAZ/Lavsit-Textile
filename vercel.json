@@ -4,7 +4,7 @@
       "maxDuration": 300
     }
   },
-  "buildCommand": "prisma generate && next build",
+  "buildCommand": "npx puppeteer browsers install chrome && prisma generate && next build",
   "installCommand": "npm install",
   "crons": []
 }
