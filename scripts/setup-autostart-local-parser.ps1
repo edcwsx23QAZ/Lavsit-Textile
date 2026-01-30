@@ -33,9 +33,9 @@ if ($existingTask) {
 }
 
 # Создаем действие для запуска PowerShell скрипта в скрытом режиме
+# WorkingDirectory задаем через cd в аргументах
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`"" `
-    -WorkingDirectory $projectRoot
+    -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"Set-Location '$projectRoot'; & '$scriptPath'`""
 
 # Создаем триггер для запуска при входе пользователя
 $trigger = New-ScheduledTaskTrigger -AtLogOn
